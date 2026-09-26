@@ -156,3 +156,42 @@ with 30 FPS returned in 3.52 s and reached a visually verified Play screen in 9.
 Existing MCP processes keep old defaults until normal restart.
 
 A cross-session inventory check measured 38 ms median over five calls. One live sample found five clients consuming roughly 4.4 CPU cores together. The helper is a cheap global client-count snapshot, not a lock or authority to stop other clients. See [follow-up evidence](/home/danick/.local/share/minecraft-benchmarks/2026-09-17/followup/report.md).
+
+## Renderer and idle FPS probe
+
+On 2026-09-26, an isolated copy of the signed-in profile ran Minecraft
+1.26.50.4 through the Linux Android launcher with llvmpipe software rendering,
+an 854×480 hidden window, a 250% CPU quota, and a 4 GiB memory limit. These
+were individual local runs, not a claim about other game versions or hardware.
+
+Setting `graphics_api:7` in `options.txt` did **not** select Noop. The game still
+logged `Renderer: llvmpipe`, displayed the normal menu, and rewrote the setting
+to `graphics_api:1` on exit. It also rewrote `gfx_max_framerate:20` to `30`.
+The launcher's separate `--fps-cap 20` remained effective. The baseline and
+API 7 runs reached the menu at 8.50 and 8.27 seconds, with 6.49 and 6.67 CPU
+seconds from socket to menu respectively; there was no meaningful gain.
+
+One cold run launched at **5 FPS** reached the menu at **17.96 seconds** and
+used **11.80 CPU seconds** from socket to menu. The comparable 20 FPS run
+reached it at **8.50 seconds** and used **6.49 CPU seconds**. Keep 20 FPS while
+loading and joining; a lower render cap can delay game progress.
+
+After a separate 12-second menu settle, one client alternated 20, 5, 20, and
+5 FPS, measuring four-second cgroup CPU windows at each setting:
+
+| FPS cap | CPU cores used | Screenshot available |
+|---:|---:|---|
+| 20 | 0.248 | Yes |
+| 5 | 0.072 | Yes |
+| 20 | 0.273 | Yes |
+| 5 | 0.078 | Yes |
+
+That is about **0.18 fewer CPU cores per settled idle client** in this menu
+probe. Screenshots still worked at 5 FPS, though a capture may have to wait for
+the next 200 ms frame. This supports `set_fps({cap:5})` only for passive periods
+when a client must stay open, followed by `set_fps({cap:20})` before active work.
+It does not establish the effect on time-sensitive gameplay. The launcher fork
+exposes an OpenGL ES render path; skipping only `eglSwapBuffers` would still
+leave the game's draw work in place. An early return from the game renderer
+would require a separately verified Android binary hook and a way to resume
+drawing for MCP screenshots.

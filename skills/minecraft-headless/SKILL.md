@@ -20,6 +20,13 @@ Use the installed Minecraft MCP off-screen. For known, repeated menu navigation,
 The local cleanup timer stops MCP-owned clients after two hours without MCP activity. It
 preserves game data; use the normal `stop` tool promptly instead of relying on the timer.
 
+Keep **20 FPS through startup, menus, and joining**. If a client must remain open for
+passive waiting after the screen is settled, call `set_fps` with `cap: 5`; restore
+`cap: 20` before active navigation, gameplay, or proof capture. The [local renderer
+probe](references/benchmarks.md#renderer-and-idle-fps-probe) found that 5 FPS cut
+settled menu CPU use, while starting at 5 FPS delayed the menu and consumed more
+total CPU. `graphics_api:7` did not enable Noop on this Android client.
+
 ## Default loop for known menu navigation
 
 Read [minecraft-jev](../minecraft-jev/SKILL.md) once when a task involves repeated known menu transitions, then use its [reviewed route format](../minecraft-jev/references/route-plan.md). Reuse a verified route when the current layout matches; otherwise inspect the unfamiliar screen before defining its controls and completion checks. A single straightforward action can remain a direct batched MCP call.

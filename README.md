@@ -32,6 +32,10 @@ wrapper unit is limited too. Routine sessions render at 20 FPS.
 `preflight` uses the requested quota and memory limit to require enough host capacity;
 `launch` repeats that check. The game scope appears a few seconds after process start,
 so the game cap takes effect when the scope is discovered, before `launch` returns.
+Keep 20 FPS through startup and joining. For a client left open during passive waiting,
+`set_fps` can lower the cap to 5; restore 20 before active work. A local probe found
+that starting at 5 FPS delayed the menu, while lowering to 5 after it settled cut
+idle menu CPU use. See the [measurements](skills/minecraft-headless/references/benchmarks.md#renderer-and-idle-fps-probe).
 
 The cleanup timer checks every ten minutes and stops only agent-owned clients whose MCP
 lease has been idle for two hours. Install it with:
