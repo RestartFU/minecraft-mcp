@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+if ! command -v xvfb-run >/dev/null 2>&1; then
+  echo "mcpelauncher-headless: xvfb-run is required; install it with: sudo dnf install xorg-x11-server-Xvfb xorg-x11-xauth" >&2
+  exit 127
+fi
+
+export LIBGL_ALWAYS_SOFTWARE=1
+exec xvfb-run -a --server-args="-screen 0 1920x1080x24 -nolisten tcp" \
+  flatpak run --user \
+    --filesystem=/home/danick/.local/libexec:ro \
+    --env=LIBGL_ALWAYS_SOFTWARE=1 \
+    --env=LD_LIBRARY_PATH=/home/danick/.local/libexec/mcpelauncher-libs \
+    --command=/home/danick/.local/libexec/mcpelauncher-client-agent-26.50 \
+    io.mrarm.mcpelauncher "$@"

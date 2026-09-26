@@ -1,0 +1,6 @@
+[Unit]
+Description=Stop stale Minecraft MCP clients
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/.local/share/minecraft-mcp/scripts/prune_stale.py
