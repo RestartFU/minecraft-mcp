@@ -6,7 +6,8 @@ protocol is documented in README.md; the server side is `mcpelauncher-client/src
 
 - New socket commands go in both places in the same change: `agent_server.cpp` and a tool in `src/index.ts`.
 - `bun run scripts/smoke.ts` is the end-to-end check; it needs the fork's client installed
-  and a signed-in game data dir. The menu is not interactive for ~30 s after launch.
+  and a signed-in game data dir. Check rendered menu readiness rather than using a fixed
+  startup delay; a local 854×480, 20 FPS run showed a usable menu at about eight seconds.
 - Never add clicking/typing into the game on the model's behalf beyond what the tools already do explicitly;
   every action stays a tool call the caller chose.
 - Keep the launch capacity check and stale-client cleanup working when changing lifecycle

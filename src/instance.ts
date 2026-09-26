@@ -8,6 +8,7 @@ import { limitFlatpakClient } from "./resource_limits.ts";
 
 const APP = process.env.MCPELAUNCHER_APP ?? "/Applications/Minecraft Bedrock Launcher.app";
 const DATA = process.env.MCPELAUNCHER_DATA ?? join(homedir(), "Library/Application Support/mcpelauncher");
+export const DEFAULT_DATA_DIR = DATA;
 const ABI = process.env.MCPELAUNCHER_ABI ?? "arm64-v8a";
 const CLIENT = process.env.MCPELAUNCHER_CLIENT ?? join(APP, "Contents/MacOS", `mcpelauncher-client-${ABI}`);
 const SOCKET_DIR = process.env.MCPELAUNCHER_SOCKET_DIR ?? tmpdir();
@@ -15,6 +16,7 @@ const SOCKET_DIR = process.env.MCPELAUNCHER_SOCKET_DIR ?? tmpdir();
 export interface LaunchOptions {
   version?: string;
   dataDir?: string;
+  startupUri?: string;
   width: number;
   height: number;
   fpsCap: number;
@@ -80,6 +82,7 @@ export class Instance {
       "--agent-socket", socketPath,
       "--fps-cap", String(opts.fpsCap),
     ];
+    if (opts.startupUri) args.push("--uri", opts.startupUri);
     if (opts.hidden) args.push("--hidden");
     if (existsSync(modsDir)) args.push("-m", modsDir + "/");
     const unitName = process.platform === "linux" ? `minecraft-mcp-${id}-${process.pid}` : undefined;

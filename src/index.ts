@@ -2,10 +2,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { Instance, installedVersions } from "./instance.ts";
+import { DEFAULT_DATA_DIR, Instance, installedVersions } from "./instance.ts";
 import { DEFAULT_CPU_QUOTA_PERCENT, DEFAULT_MEMORY_LIMIT_MIB, preflight } from "./preflight.ts";
 import { nativeInput } from "./native_input.ts";
-import { addServer } from "./add_server.ts";
+import { addServer, externalServerUri, savedServerName, serverConnectUri, waitForStartupServer } from "./add_server.ts";
 
 const instances = new Map<string, Instance>();
 let current: string | undefined;
@@ -31,39 +31,55 @@ server.tool("preflight", "Check host CPU, RAM, and global Minecraft client capac
 
 server.tool(
   "launch",
-  "Start a real Minecraft Bedrock client (via mcpelauncher) with the agent socket attached",
+  "Start a real Minecraft Bedrock client, optionally adding and joining a server during startup",
   {
     id: z.string().default("main").describe("Instance id, unique per running client"),
     version: z.string().optional().describe("Installed game version; defaults to the newest"),
     data_dir: z.string().optional().describe("Separate data dir (own Xbox login, worlds, settings) for running several bots"),
+    startup_uri: z.string().startsWith("minecraft://").max(2048).optional().describe("Minecraft URI dispatched during startup; verify its effect after launch"),
+    server_to_join: z.object({ name: z.string(), address: z.string() }).optional().describe("Save a new server or connect to an existing one during startup, then confirm the prompt (854×480)"),
     width: z.number().int().min(320).default(854),
     height: z.number().int().min(180).default(480),
-    fps_cap: z.number().int().min(0).default(20).describe("Render cap; 20 FPS limits CPU for routine work; game ticks are independent"),
+    fps_cap: z.number().int().min(0).default(20).describe("Render cap; 20 FPS limits CPU for routine work"),
     hidden: z.boolean().default(true).describe("Keep the window hidden (still renders for screenshots)"),
     cpu_quota_percent: z.number().int().min(50).max(400).default(DEFAULT_CPU_QUOTA_PERCENT).describe("Per-client CPU quota on Linux; 100 = one CPU core"),
     memory_limit_mib: z.number().int().min(1024).max(8192).default(DEFAULT_MEMORY_LIMIT_MIB).describe("Per-client memory limit on Linux, in MiB"),
     wait_for_menu: z.boolean().default(false).describe("Default false returns when the window exists. True waits for two visible main menu frames"),
   },
-  async ({ id, version, data_dir, width, height, fps_cap, hidden, cpu_quota_percent, memory_limit_mib, wait_for_menu }) => {
+  async ({ id, version, data_dir, startup_uri, server_to_join, width, height, fps_cap, hidden, cpu_quota_percent, memory_limit_mib, wait_for_menu }) => {
     if (instances.get(id)?.alive) throw new Error(`instance ${id} already running`);
+    if (server_to_join && startup_uri) throw new Error("use either server_to_join or startup_uri, not both");
+    if (server_to_join && wait_for_menu) throw new Error("server_to_join handles its own screen readiness; leave wait_for_menu false");
+    if (server_to_join && (width !== 854 || height !== 480)) throw new Error("server_to_join requires an 854×480 client");
+    const savedBeforeLaunch = server_to_join ? await savedServerName(data_dir ?? DEFAULT_DATA_DIR, server_to_join.address) : undefined;
+    const initialUri = server_to_join
+      ? (savedBeforeLaunch === undefined
+        ? externalServerUri(server_to_join.name, server_to_join.address)
+        : serverConnectUri(server_to_join.address))
+      : startup_uri;
     const check = await preflight(memory_limit_mib, cpu_quota_percent);
     if (!check.ok) throw new Error(`not enough capacity to launch: ${check.issues.join("; ")}`);
-    const inst = await Instance.launch(id, { version, dataDir: data_dir, width, height, fpsCap: fps_cap, hidden,
+    const inst = await Instance.launch(id, { version, dataDir: data_dir, startupUri: initialUri, width, height, fpsCap: fps_cap, hidden,
       cpuQuotaPercent: cpu_quota_percent, memoryLimitMiB: memory_limit_mib });
     instances.set(id, inst);
     current = id;
-    if (wait_for_menu) {
-      try {
+    let serverJoin: Awaited<ReturnType<typeof addServer>> | undefined;
+    try {
+      if (server_to_join) {
+        if (savedBeforeLaunch === undefined) await waitForStartupServer(inst, server_to_join.name, server_to_join.address);
+        serverJoin = await addServer(inst, server_to_join.name, server_to_join.address, true, savedBeforeLaunch !== undefined);
+      } else if (wait_for_menu) {
         await inst.waitForMenu();
-      } catch (error) {
-        await inst.stop(5_000);
-        instances.delete(id);
-        current = [...instances.keys()].pop();
-        throw error;
       }
+      const state = await inst.socket.call("state");
+      return text({ instance: id, version: inst.version, pid: inst.gamePid, cpu_quota_percent, memory_limit_mib, ...state,
+        ...(serverJoin ? { server_join: serverJoin } : {}) });
+    } catch (error) {
+      await inst.stop(5_000);
+      instances.delete(id);
+      current = [...instances.keys()].pop();
+      throw error;
     }
-    const state = await inst.socket.call("state");
-    return text({ instance: id, version: inst.version, pid: inst.gamePid, cpu_quota_percent, memory_limit_mib, ...state });
   },
 );
 
@@ -153,7 +169,7 @@ server.tool("scroll", "Scroll the mouse wheel (hotbar / lists)", { ...instanceAr
 
 server.tool(
   "add_server",
-  "Add an external server through the in-game form and confirm it was saved (854×480 clients)",
+  "Add an external server using Minecraft's URI or form fallback and verify it was saved (854×480 clients)",
   { ...instanceArg, name: z.string(), address: z.string().describe("host or host:port (default port 19132)"),
     join: z.boolean().default(false).describe("After saving, connect and confirm the external-server prompt; does not wait for the world") },
   async ({ instance, name, address, join }) => text(await addServer(pick(instance), name, address, join)),

@@ -22,7 +22,7 @@ export function mainMenuReady(pngBase64: string): boolean {
 // Confirmation shown by the documented `minecraft://connect` URI for a newly
 // added address on this client. Check the dialog frame, green Continue button,
 // and gray Cancel button before sending input to it.
-export function externalServerPromptReady(pngBase64: string): boolean {
+function externalServerDialog(pngBase64: string, requireGreen: boolean): boolean {
   const png = PNG.sync.read(Buffer.from(pngBase64, "base64"));
   if (png.width !== 854 || png.height !== 480) return false;
   const rgb = (x: number, y: number) => {
@@ -33,10 +33,20 @@ export function externalServerPromptReady(pngBase64: string): boolean {
   const [fieldR, fieldG, fieldB] = rgb(425, 225);
   const [goR, goG, goB] = rgb(360, 265);
   const [cancelR, cancelG, cancelB] = rgb(360, 298);
+  const green = goG > 90 && goG > goR * 1.6 && goG > goB * 3;
+  const neutral = goR > 145 && Math.abs(goR - goG) < 12 && Math.abs(goG - goB) < 12;
   return borderR > 235 && borderG > 235 && borderB > 235 &&
     fieldR < 30 && fieldG < 30 && fieldB < 30 &&
-    goG > 90 && goG > goR * 1.6 && goG > goB * 3 &&
+    (requireGreen ? green : green || neutral) &&
     cancelR > 145 && Math.abs(cancelR - cancelG) < 12 && Math.abs(cancelG - cancelB) < 12;
+}
+
+export function externalServerPromptReady(pngBase64: string): boolean {
+  return externalServerDialog(pngBase64, true);
+}
+
+export function externalServerPromptPresent(pngBase64: string): boolean {
+  return externalServerDialog(pngBase64, false);
 }
 
 // These checks match the stock 854×480 Servers tab and Add Server form. Sample

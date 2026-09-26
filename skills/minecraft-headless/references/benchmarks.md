@@ -104,6 +104,51 @@ The harness stores stage times, frames, and the actual game cgroup's limits unde
 refuses a target already in the saved list. The `saved` secondary route was not
 validated in the final runs; `combined` is the measured path.
 
+### Add during startup
+
+The installed client accepts the documented `addExternalServer` URI during launch.
+On this build it saved the exact entry before the Servers tab became interactive,
+so the MCP now checks for that entry and skips form typing when it exists. For a
+cold new-server join, `launch({server_to_join:{name,address}})` dispatches the add
+URI with the launcher, waits for the entry and two ready frames, switches to mouse
+input, then sends the connect URI and confirms Continue. `add_server(join:true)`
+retains a form fallback for builds where the add URI only opens the tab.
+
+| 250% CPU / 4 GiB, one local run each | Exact entry saved | Prompt dismissed | Fixture `BENCH_READY` | Living world proof |
+|---|---:|---:|---:|---:|
+| Original menu + form, 20 FPS | — | 15.29 s | — | 29.56 s |
+| Startup add + join, 20 FPS | 7.79 s | 12.60 s | 26.03 s | 27.13 s |
+| Startup add + join, 30 FPS | 6.98 s | 12.24 s | 25.06 s | Visible later; marker frame missed |
+
+The original result is the earlier full-flow baseline; its 15.29 s mark includes
+the save and prompt. These individual trials show that launch-time addition
+removed roughly 2.7 s before connection confirmation, with a 2.4 s earlier
+world screenshot in the 20 FPS run. World loading dominated the remaining time.
+The 30 FPS run reached the fixture about one second earlier, but one run does not
+establish a repeatable benefit; keep 20 FPS for lower routine CPU use. Its
+`BENCH_READY` event is in the fixture log, and a later screenshot shows the living
+world, but the harness missed the transient title in a saved frame. The harness
+now retains a first stable world-candidate frame separately from a title-confirmed
+world.
+
+For an **already saved** host and port, startup `connect` skips the add URI and
+Servers tab. One 20 FPS probe reached the prompt 10.60 s after launch and the
+marked world at 25.31 s. The integrated `launch({server_to_join})` check used a
+different requested name from the saved entry; it returned the original name,
+created no duplicate, dismissed the prompt at 10.25 s, and reached a marked
+world at 26.49 s. The variation in world screenshot timing is larger than the
+prompt difference. Both checks seeded the entry in a separate game session and
+exclude that setup time from the quoted join phase; seeding plus joining took
+longer than the single-client new-server path.
+
+Rerun the integrated path with a task-owned fixture and an in-world marker:
+
+```bash
+bun scripts/join_benchmark.ts --target 127.0.0.1:19357 \
+  --mode launch-join --world-text BENCH_READY \
+  --output /tmp/minecraft-join-rerun --cpu-quota-percent 250 --fps-cap 20
+```
+
 ## Follow-up: eliminate repeated work
 
 The MCP now defaults to 20 FPS and early-return launch. The earlier SDK smoke test

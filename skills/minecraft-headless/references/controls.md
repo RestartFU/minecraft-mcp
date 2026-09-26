@@ -26,7 +26,7 @@ These short waits cover normal 30 FPS input/animation; increase them when measur
 
 ### Joining a server
 
-For a new server on the default 854×480 layout, use `add_server` with `join: true`. It saves the exact requested entry and confirms the external-server prompt in one call; then verify the joined world or server response. For an existing saved host and port, that call joins without creating a duplicate. The result `joining: true` means the connection was requested, not that world loading finished. If you must select a visible saved entry manually, inspect the current list before scrolling and verify its name; do not recreate duplicates on retries.
+For a new default 854×480 client, pass `server_to_join: { name, address }` to `launch`. It adds a new entry or connects to an already saved host and port during startup. For a client already running, use `add_server` with `join: true`. Both verify the saved entry and confirm the external-server prompt; then verify the joined world or server response. Existing entries keep their saved name and are never duplicated. The result `joining: true` means the connection was requested, not that world loading finished. If you must select a visible saved entry manually, inspect the current list before scrolling and verify its name; do not recreate duplicates on retries.
 
 If `open_uri` was tried and stalls at the main menu or Servers tab, use the saved entry immediately. Do not cycle through URI spellings, repeat the same deep link, or restart a healthy client to fix navigation. Observe a join/loading screen before waiting for the server. On no progress, check the client log and proxy endpoint/version/authentication evidence; arbitrary longer sleeps do not establish success.
 

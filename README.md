@@ -62,12 +62,16 @@ patterns and [the Jev skill](skills/minecraft-jev/SKILL.md) for reviewed repeate
 `wait_for_menu: true` when the next action needs the main menu; it checks the rendered
 buttons rather than sleeping for a fixed startup period.
 
-To add a server and start joining in one call, launch a default 854×480 client with
-`wait_for_menu: true`, then call `add_server` with `name`, `address`, and `join: true`.
-It verifies the saved name, host, and port, opens Minecraft's external-server
-confirmation, and selects Continue. The result means the connection was requested;
-check a world screenshot or server response to confirm the join. Repeating the call
-for an existing host and port joins that saved server without adding a duplicate.
+For a **new server on a new client**, pass `server_to_join: { name: "Example", address:
+"example.org:19132" }` to `launch` at 854×480. The launcher delivers the add-server URI
+while Minecraft starts; the MCP checks the exact saved entry and a ready screen, then
+opens and confirms the external-server prompt. `launch` returns after Continue is
+dismissed, while the world may still be loading. Verify the joined world or server
+response. When the host and port are already saved, the same launch option sends the
+connect URI during startup and keeps the existing saved name. For an already running
+client, call `add_server` with `name`, `address`, and `join: true`; it avoids duplicate
+saved entries. The regular `startup_uri` launch option passes a Minecraft URI without
+assuming it succeeded; inspect its effect before acting.
 
 ## Verification
 
