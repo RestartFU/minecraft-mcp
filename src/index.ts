@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { Instance, installedVersions } from "./instance.ts";
-import { preflight } from "./preflight.ts";
+import { DEFAULT_CPU_QUOTA_PERCENT, DEFAULT_MEMORY_LIMIT_MIB, preflight } from "./preflight.ts";
 import { nativeInput } from "./native_input.ts";
 import { addServer } from "./add_server.ts";
 
@@ -24,7 +24,10 @@ const instanceArg = { instance: z.string().optional().describe("Instance id; def
 
 const server = new McpServer({ name: "mcpelauncher-agent", version: "0.1.0" });
 
-server.tool("preflight", "Check host CPU, RAM, and global Minecraft client capacity before launch", {}, async () => text(await preflight()));
+server.tool("preflight", "Check host CPU, RAM, and global Minecraft client capacity before launch", {
+  cpu_quota_percent: z.number().int().min(50).max(400).default(DEFAULT_CPU_QUOTA_PERCENT),
+  memory_limit_mib: z.number().int().min(1024).max(8192).default(DEFAULT_MEMORY_LIMIT_MIB),
+}, async ({ cpu_quota_percent, memory_limit_mib }) => text(await preflight(memory_limit_mib, cpu_quota_percent)));
 
 server.tool(
   "launch",
@@ -37,13 +40,13 @@ server.tool(
     height: z.number().int().min(180).default(480),
     fps_cap: z.number().int().min(0).default(20).describe("Render cap; 20 FPS limits CPU for routine work; game ticks are independent"),
     hidden: z.boolean().default(true).describe("Keep the window hidden (still renders for screenshots)"),
-    cpu_quota_percent: z.number().int().min(50).max(400).default(150).describe("Per-client CPU quota on Linux; 100 = one CPU core"),
-    memory_limit_mib: z.number().int().min(1024).max(8192).default(4096).describe("Per-client memory limit on Linux, in MiB"),
+    cpu_quota_percent: z.number().int().min(50).max(400).default(DEFAULT_CPU_QUOTA_PERCENT).describe("Per-client CPU quota on Linux; 100 = one CPU core"),
+    memory_limit_mib: z.number().int().min(1024).max(8192).default(DEFAULT_MEMORY_LIMIT_MIB).describe("Per-client memory limit on Linux, in MiB"),
     wait_for_menu: z.boolean().default(false).describe("Default false returns when the window exists. True waits for two visible main menu frames"),
   },
   async ({ id, version, data_dir, width, height, fps_cap, hidden, cpu_quota_percent, memory_limit_mib, wait_for_menu }) => {
     if (instances.get(id)?.alive) throw new Error(`instance ${id} already running`);
-    const check = await preflight(memory_limit_mib);
+    const check = await preflight(memory_limit_mib, cpu_quota_percent);
     if (!check.ok) throw new Error(`not enough capacity to launch: ${check.issues.join("; ")}`);
     const inst = await Instance.launch(id, { version, dataDir: data_dir, width, height, fpsCap: fps_cap, hidden,
       cpuQuotaPercent: cpu_quota_percent, memoryLimitMiB: memory_limit_mib });
@@ -151,8 +154,9 @@ server.tool("scroll", "Scroll the mouse wheel (hotbar / lists)", { ...instanceAr
 server.tool(
   "add_server",
   "Add an external server through the in-game form and confirm it was saved (854×480 clients)",
-  { ...instanceArg, name: z.string(), address: z.string().describe("host or host:port (default port 19132)") },
-  async ({ instance, name, address }) => text(await addServer(pick(instance), name, address)),
+  { ...instanceArg, name: z.string(), address: z.string().describe("host or host:port (default port 19132)"),
+    join: z.boolean().default(false).describe("After saving, connect and confirm the external-server prompt; does not wait for the world") },
+  async ({ instance, name, address, join }) => text(await addServer(pick(instance), name, address, join)),
 );
 
 server.tool(

@@ -24,9 +24,14 @@ bun run src/index.ts
 
 `preflight` and `launch` count actual clients across MCP connections, check host load, and
 require available RAM equal to the requested session memory limit plus 2 GiB. At most four
-clients run at once. Each Linux client starts in its own systemd user unit with a default
-150% CPU quota (1.5 cores) and 4096 MiB memory limit. Routine sessions render at 20 FPS.
+clients run at once. Each Linux client starts through a systemd user unit. Flatpak moves
+the game into its own app scope, so `launch` applies and verifies the default 250% CPU
+quota (2.5 cores) and 4096 MiB memory limit on that game scope before returning. The
+wrapper unit is limited too. Routine sessions render at 20 FPS.
 `launch` accepts bounded `cpu_quota_percent`, `memory_limit_mib`, and `fps_cap` overrides.
+`preflight` uses the requested quota and memory limit to require enough host capacity;
+`launch` repeats that check. The game scope appears a few seconds after process start,
+so the game cap takes effect when the scope is discovered, before `launch` returns.
 
 The cleanup timer checks every ten minutes and stops only agent-owned clients whose MCP
 lease has been idle for two hours. Install it with:
@@ -57,9 +62,22 @@ patterns and [the Jev skill](skills/minecraft-jev/SKILL.md) for reviewed repeate
 `wait_for_menu: true` when the next action needs the main menu; it checks the rendered
 buttons rather than sleeping for a fixed startup period.
 
+To add a server and start joining in one call, launch a default 854×480 client with
+`wait_for_menu: true`, then call `add_server` with `name`, `address`, and `join: true`.
+It verifies the saved name, host, and port, opens Minecraft's external-server
+confirmation, and selects Continue. The result means the connection was requested;
+check a world screenshot or server response to confirm the join. Repeating the call
+for an existing host and port joins that saved server without adding a duplicate.
+
 ## Verification
 
 `scripts/benchmark.ts` runs a single bounded client, records launch, screenshot, and stop
 timings, and always stops the client on exit. It requires the same launcher environment
 variables as the MCP. Use its output to compare changes to launch behavior; do not run
 multiple benchmark clients when host resources are constrained.
+
+`scripts/join_benchmark.ts` measures menu readiness, new-server save, external-server
+confirmation, and a visible joined world against an owned test server. It saves frames,
+stage times, and actual game-process cgroup limits under `/tmp`, then stops its client
+and removes only its exact disposable server entry. See the [join benchmark notes](skills/minecraft-headless/references/benchmarks.md)
+before interpreting a run; real server latency and world loading vary.

@@ -24,10 +24,13 @@ python /home/danick/.codex/skills/minecraft-headless/scripts/client_inventory.py
 
 Exit 2 means the machine already has four or more clients; the JSON names the actual clients without reading credentials. This is a snapshot, not a locking mechanism. Do not turn it into a polling loop. Reuse a task-owned client if possible. Do not infer that an unfamiliar instance is abandoned or stop it. An authenticated remote-server test needs an appropriate authenticated profile; a fresh logged-out profile is not a substitute.
 
-Call MCP `preflight` before launch. `launch` repeats it with the requested memory limit,
-requiring that limit plus 2 GiB of host available RAM and 20% spare CPU capacity. Linux
-launches each client in a systemd user unit with a default 150% CPU quota and 4096 MiB
-memory maximum. `minecraft-mcp-cleanup.timer` stops agent clients idle for two hours.
+Call MCP `preflight` before launch, passing requested `cpu_quota_percent` and
+`memory_limit_mib` when overriding the defaults. `launch` repeats the check, requiring
+the memory limit plus 2 GiB of host available RAM and spare CPU capacity at least the
+larger of 20% of the host or the requested quota. Linux caps the wrapper unit and
+verifies the actual Flatpak game scope has the default 250% CPU quota and 4096 MiB
+memory maximum before returning. `minecraft-mcp-cleanup.timer` stops agent clients
+idle for two hours.
 
 The local MCP source defaults to 20 FPS and early-return launch. Already-running MCP
 processes retain their old defaults until their normal restart; pass explicit values there.

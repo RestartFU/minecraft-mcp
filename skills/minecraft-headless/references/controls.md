@@ -26,7 +26,7 @@ These short waits cover normal 30 FPS input/animation; increase them when measur
 
 ### Joining a server
 
-Select the existing requested saved entry in the Servers tab and Play. Use `add_server` once only when the entry is absent. It is navigation, not proof of a join. Inspect the current list before scrolling; scroll within its pane and verify the target name. Do not recreate duplicate entries on retries.
+For a new server on the default 854×480 layout, use `add_server` with `join: true`. It saves the exact requested entry and confirms the external-server prompt in one call; then verify the joined world or server response. For an existing saved host and port, that call joins without creating a duplicate. The result `joining: true` means the connection was requested, not that world loading finished. If you must select a visible saved entry manually, inspect the current list before scrolling and verify its name; do not recreate duplicates on retries.
 
 If `open_uri` was tried and stalls at the main menu or Servers tab, use the saved entry immediately. Do not cycle through URI spellings, repeat the same deep link, or restart a healthy client to fix navigation. Observe a join/loading screen before waiting for the server. On no progress, check the client log and proxy endpoint/version/authentication evidence; arbitrary longer sleeps do not establish success.
 
@@ -45,6 +45,6 @@ python /home/danick/.codex/skills/minecraft-headless/scripts/native_input.py \
 
 Run that example in an empty, focused field. For Lunar chat it types the slash form and replaces its leading slash with a dot, working around the affected chat widget. The helper supports printable ASCII and X key names; it never submits unless explicitly given `--keys Return`. For ordinary fields, use `--text 'value'` without prefix conversion. If needed, `--click X Y` focuses the field using full window coordinates.
 
-**Ctrl+A and selection deletion proved unreliable in the live benchmark.** To replace existing single-line text, pass `--clear-chars N` using its observed length: End plus N native BackSpaces, then the new text. Check that the field is empty once before trusting a combined clear/type sequence on a new widget. Do not repeatedly append text or infer success from highlighting alone. Keep the helper's 50 ms event delay initially; shorter delays need correctness checks, not just timing.
+**Ctrl+A and selection deletion proved unreliable in the live benchmark.** To replace existing single-line text, pass `--clear-chars N` using its observed length: End plus N native BackSpaces, then the new text. Check that the field is empty once before trusting a combined clear/type sequence on a new widget. Do not repeatedly append text or infer success from highlighting alone. The MCP's Add Server form uses a measured 20 ms event delay; other text widgets keep the helper's 50 ms default until checked for correctness at a shorter delay.
 
 To submit affected chat, click the send arrow so it has the green focus outline, then press Enter; native `--keys Return` is available if MCP Enter fails. Verify the command response. After two attempts without new progress, diagnose the frame/log or use an authorized test fixture; do not accumulate commands or repeatedly reconnect. Test-only defaults can validate rendering, but cannot stand in for validating the command itself.

@@ -4,6 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentSocket } from "./socket.ts";
 import { mainMenuReady } from "./menu_ready.ts";
+import { limitFlatpakClient } from "./resource_limits.ts";
 
 const APP = process.env.MCPELAUNCHER_APP ?? "/Applications/Minecraft Bedrock Launcher.app";
 const DATA = process.env.MCPELAUNCHER_DATA ?? join(homedir(), "Library/Application Support/mcpelauncher");
@@ -99,6 +100,7 @@ export class Instance {
       inst.socket = await Promise.race([AgentSocket.connect(socketPath, 90_000), exited]);
       inst.gamePid = findClientPid(socketPath);
       if (!inst.gamePid) throw new Error(`client for ${id} has no matching process`);
+      if (unitName) limitFlatpakClient(inst.gamePid, socketPath, opts.cpuQuotaPercent, opts.memoryLimitMiB);
     } catch (error) {
       inst.forceStop();
       rmSync(inst.leasePath, { force: true });

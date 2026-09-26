@@ -11,3 +11,11 @@ test("launch capacity includes clients owned by other MCP processes", () => {
   expect(capacityIssues({ availableMiB: 20000, load1: 1, cpus: 8, clients: 4 }))
     .toContain("client capacity: 4 running; maximum 4");
 });
+
+test("launch reserves the requested CPU quota as well as host headroom", () => {
+  const host = { availableMiB: 20000, load1: 5, cpus: 8, clients: 0 };
+  expect(capacityIssues(host, 4096, 250)).toEqual([]);
+  expect(capacityIssues(host, 4096, 400)).toContain(
+    "host CPU: 1-minute load 5 across 8 CPUs; need 4.0 spare CPUs",
+  );
+});

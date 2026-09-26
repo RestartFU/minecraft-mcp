@@ -61,6 +61,49 @@ Server form successfully. These are individual runs, not a latency guarantee;
 retain the 20 FPS default for routine work. Menu image decoding cost 5.5 ms per
 frame in a 20-frame local sample.
 
+## New server through joined world
+
+On 2026-09-26, a task-owned offline Dragonfly fixture at `127.0.0.1:19357` accepted
+Minecraft 1.26.50.4 and sent a `BENCH_READY` title after join. The benchmark launched
+one hidden 854×480 client at a time at 20 FPS, added a uniquely named server through
+`add_server(join: true)`, verified the exact saved name/host/port, confirmed the
+external-server prompt, and stopped only its own client. A visible living world with
+`BENCH_READY` was the completion check. All disposable entries were removed.
+
+| Game CPU ceiling | Menu visible | Server saved + prompt confirmed | Living world confirmed | Game cgroup throttled CPU time |
+|---|---:|---:|---:|---:|
+| 150% | 9.13 s | 18.74 s | 38.08 s | 74.87M µs |
+| 250% | 8.55 s | 15.29 s | 29.56 s | 17.64M µs |
+| 400% | 8.43 s | 14.97 s | 29.86 s | 5.45M µs |
+
+These are **one successful run per ceiling**, not stable medians. The game process's
+own cgroup showed the requested `cpu.max` and a 4 GiB `memory.max` in each capped
+run. `throttled_usec` counts runnable CPU time across threads, not seconds added to
+the wall clock. The 250% ceiling was fastest in this small comparison and uses less
+peak CPU capacity than 400%, so it is the default. A remote server can add auth,
+network, pack, and world-load delays absent from this local fixture.
+
+For form input, two uncapped 20 ms trials saved the exact server and reached a living
+world (26.06 and 28.51 s); their prompt-confirmation times were 13.08 and 13.14 s.
+A 50 ms trial confirmed the prompt at 15.66 s, but its world frame had a death screen,
+so it is excluded from successful-join comparisons. A single 10 ms trial with visual
+screen checks confirmed the prompt at 13.41 s and the world at 26.48 s. The server
+form therefore uses 20 ms input; other native input keeps its 50 ms default. The form
+waits for rendered Servers-tab and Add Server frames rather than fixed sleeps.
+
+Rerun only against a task-owned server that supplies a recognizable in-world marker:
+
+```bash
+bun scripts/join_benchmark.ts --target 127.0.0.1:19357 \
+  --mode combined --world-text BENCH_READY \
+  --output /tmp/minecraft-join-rerun --cpu-quota-percent 250
+```
+
+The harness stores stage times, frames, and the actual game cgroup's limits under
+`/tmp`, then stops its client and removes its exact temporary server entry. It
+refuses a target already in the saved list. The `saved` secondary route was not
+validated in the final runs; `combined` is the measured path.
+
 ## Follow-up: eliminate repeated work
 
 The MCP now defaults to 20 FPS and early-return launch. The earlier SDK smoke test
