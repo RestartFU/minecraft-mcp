@@ -53,6 +53,10 @@ display. The helper accepts printable ASCII. Screenshots and mouse input use the
 agent socket. See [the skill](skills/minecraft-headless/SKILL.md) for working navigation
 patterns and [the Jev skill](skills/minecraft-jev/SKILL.md) for reviewed repeated routes.
 
+`launch` returns as soon as the client socket is ready by default. Set
+`wait_for_menu: true` when the next action needs the main menu; it checks the rendered
+buttons rather than sleeping for a fixed startup period.
+
 ## Verification
 
 `scripts/benchmark.ts` runs a single bounded client, records launch, screenshot, and stop

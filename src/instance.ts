@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentSocket } from "./socket.ts";
+import { mainMenuReady } from "./menu_ready.ts";
 
 const APP = process.env.MCPELAUNCHER_APP ?? "/Applications/Minecraft Bedrock Launcher.app";
 const DATA = process.env.MCPELAUNCHER_DATA ?? join(homedir(), "Library/Application Support/mcpelauncher");
@@ -110,22 +111,26 @@ export class Instance {
     writeFileSync(this.leasePath, JSON.stringify({ id: this.id, ownerPid: process.pid, lastUsed: Date.now() }), { mode: 0o600 });
   }
 
-  // The socket is up as soon as the window exists, but the main menu only accepts input ~30 s after the
-  // first frame renders. Waits for that so callers can click immediately.
+  // FPS becomes nonzero on the loading screen. Inspect the actual menu instead of
+  // adding a fixed delay after the first rendered frame.
   async waitForMenu(timeoutMs = 120_000) {
     const deadline = Date.now() + timeoutMs;
+    let seen = false;
     while (Date.now() < deadline) {
-      const state = await this.socket.send("state");
-      if (state.ok && (state.fps as number) > 0) break;
-      await new Promise((r) => setTimeout(r, 1000));
+      const shot = await this.socket.call("screenshot", { width: 426 });
+      if (mainMenuReady(shot.png_base64 as string)) {
+        if (seen) {
+          // Switch the first input from keyboard to mouse mode before returning.
+          await this.socket.call("mouse_pos", { x: this.width * 0.7, y: this.height * 0.83 });
+          return;
+        }
+        seen = true;
+      } else {
+        seen = false;
+      }
+      await new Promise((r) => setTimeout(r, 250));
     }
-    await new Promise((r) => setTimeout(r, 20_000));
-    // The menu starts in keyboard-focus mode and swallows the first press that arrives with the hover
-    // that switches it to mouse mode; two idle hovers get that out of the way.
-    for (const x of [600, 640]) {
-      await this.socket.send("mouse_pos", { x, y: 400 });
-      await new Promise((r) => setTimeout(r, 1000));
-    }
+    throw new Error(`Minecraft main menu was not visible within ${timeoutMs} ms`);
   }
 
   get alive() {

@@ -39,7 +39,7 @@ server.tool(
     hidden: z.boolean().default(true).describe("Keep the window hidden (still renders for screenshots)"),
     cpu_quota_percent: z.number().int().min(50).max(400).default(150).describe("Per-client CPU quota on Linux; 100 = one CPU core"),
     memory_limit_mib: z.number().int().min(1024).max(8192).default(4096).describe("Per-client memory limit on Linux, in MiB"),
-    wait_for_menu: z.boolean().default(false).describe("Default false returns when the window exists; inspect a screenshot before input. True adds the legacy fixed menu wait"),
+    wait_for_menu: z.boolean().default(false).describe("Default false returns when the window exists. True waits for two visible main menu frames"),
   },
   async ({ id, version, data_dir, width, height, fps_cap, hidden, cpu_quota_percent, memory_limit_mib, wait_for_menu }) => {
     if (instances.get(id)?.alive) throw new Error(`instance ${id} already running`);
@@ -49,7 +49,16 @@ server.tool(
       cpuQuotaPercent: cpu_quota_percent, memoryLimitMiB: memory_limit_mib });
     instances.set(id, inst);
     current = id;
-    if (wait_for_menu) await inst.waitForMenu();
+    if (wait_for_menu) {
+      try {
+        await inst.waitForMenu();
+      } catch (error) {
+        await inst.stop(5_000);
+        instances.delete(id);
+        current = [...instances.keys()].pop();
+        throw error;
+      }
+    }
     const state = await inst.socket.call("state");
     return text({ instance: id, version: inst.version, pid: inst.gamePid, cpu_quota_percent, memory_limit_mib, ...state });
   },

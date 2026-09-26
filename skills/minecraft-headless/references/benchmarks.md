@@ -49,8 +49,22 @@ Review each `*-before.png` and `*-after.png` alongside `launch.json`; the harnes
 
 To remeasure tool latency, use one task-owned instance and `Date.now()` around awaited native MCP calls inside one `functions.exec`; collect several samples of `state`, `mouse_move_to`, and `screenshot` at each FPS cap, alternating cap order. Save timings and image sizes, and forward only frames needed for visual decisions. Keep screenshot mutations and clicks sequential. Do not include model-round-trip time in an RPC-only result or infer end-to-end speedup from it.
 
+## Follow-up: detect the visible menu
+
+On 2026-09-26, a single 20 FPS startup probe sampled screenshots about every 550 ms.
+The client socket appeared at 3.52 s. The last loading frame was at 7.43 s; the
+first visible main menu frame was at 8.02 s. The former fixed menu wait returned
+at 26.84 s in the MCP smoke test. The revised wait checks two visible menu frames
+and returned at 8.51 s in a full MCP smoke test, then 8.45 s in a second local
+benchmark at 854×480 and 20 FPS. The smoke test then completed the in-game Add
+Server form successfully. These are individual runs, not a latency guarantee;
+retain the 20 FPS default for routine work. Menu image decoding cost 5.5 ms per
+frame in a 20-frame local sample.
+
 ## Follow-up: eliminate repeated work
 
-The installed MCP now defaults to 30 FPS and early-return launch. A fresh SDK smoke test with those arguments omitted returned in 3.52 s and reached a visually verified Play screen in 9.84 s. This confirms the earlier fast path now happens by default; it is not an additional speedup over the first benchmark. Existing MCP processes keep old defaults until normal restart.
+The MCP now defaults to 20 FPS and early-return launch. The earlier SDK smoke test
+with 30 FPS returned in 3.52 s and reached a visually verified Play screen in 9.84 s.
+Existing MCP processes keep old defaults until normal restart.
 
 A cross-session inventory check measured 38 ms median over five calls. One live sample found five clients consuming roughly 4.4 CPU cores together. The helper is a cheap global client-count snapshot, not a lock or authority to stop other clients. See [follow-up evidence](/home/danick/.local/share/minecraft-benchmarks/2026-09-17/followup/report.md).
