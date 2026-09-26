@@ -184,6 +184,13 @@ server.tool(
 
 server.tool("set_fps", "Change the render cap at runtime (0 = uncapped while focused)", { ...instanceArg, cap: z.number().int().min(0) }, async ({ instance, cap }) => text(await pick(instance).socket.call("fps", { cap })));
 
+server.tool(
+  "set_render_mode",
+  "Skip OpenGL draws between screenshots while keeping the game loop running; each screenshot renders a fresh full frame",
+  { ...instanceArg, on_demand: z.boolean().describe("True skips passive drawing; false renders every frame") },
+  async ({ instance, on_demand }) => text(await pick(instance).socket.call("render", { on_demand })),
+);
+
 server.tool("wait", "Wait for the game to catch up", { ms: z.number().int().min(1).max(60_000) }, async ({ ms }) => {
   await sleep(ms);
   return text({ ok: true });

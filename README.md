@@ -33,9 +33,12 @@ wrapper unit is limited too. Routine sessions render at 20 FPS.
 `launch` repeats that check. The game scope appears a few seconds after process start,
 so the game cap takes effect when the scope is discovered, before `launch` returns.
 Keep 20 FPS through startup and joining. For a client left open during passive waiting,
-`set_fps` can lower the cap to 5; restore 20 before active work. A local probe found
-that starting at 5 FPS delayed the menu, while lowering to 5 after it settled cut
-idle menu CPU use. See the [measurements](skills/minecraft-headless/references/benchmarks.md#renderer-and-idle-fps-probe).
+`set_render_mode({on_demand:true})` skips common OpenGL draws between screenshots;
+each screenshot turns drawing on for a complete following frame. Combine it with
+`set_fps({cap:5})` for the lowest passive CPU use. Restore continuous drawing and
+20 FPS before active gameplay. A local probe found that starting at 5 FPS delayed
+the menu, while switching after it settled cut idle CPU use. See the
+[measurements](skills/minecraft-headless/references/benchmarks.md#on-demand-draw-probe).
 
 The cleanup timer checks every ten minutes and stops only agent-owned clients whose MCP
 lease has been idle for two hours. Install it with:
@@ -51,7 +54,7 @@ systemctl --user enable --now minecraft-mcp-cleanup.timer
 
 `preflight` · `launch` · `stop` · `list` · `state` · `screenshot` · `key` · `hold_key` · `type` ·
 `chat` · `look` · `click` · `mouse_move_to` · `scroll` · `add_server` · `open_uri` · `set_fps` ·
-`wait` · `log`
+`set_render_mode` · `wait` · `log`
 
 Most tools take an optional `instance`. Use a unique instance ID per task. `list` covers the
 current MCP process; `skills/minecraft-headless/scripts/client_inventory.py` counts every

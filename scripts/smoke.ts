@@ -2,6 +2,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { readFileSync, writeFileSync } from "node:fs";
+import { mainMenuReady } from "../src/menu_ready.ts";
 
 const client = new Client({ name: "minecraft-mcp-smoke", version: "1.0.0" });
 const id = `smoke_${process.pid}`;
@@ -24,13 +25,18 @@ try {
   const launch = await call("launch", { id, wait_for_menu: true });
   launched = true;
   console.log(JSON.stringify({ stage: "launch", ms: Math.round(performance.now() - started), pid: launch.pid }));
+  await call("set_render_mode", { instance: id, on_demand: true });
+  const capture = await client.callTool({ name: "screenshot", arguments: { instance: id, width: 426 } });
+  const image = capture.content.find((part) => part.type === "image");
+  if (capture.isError || !image || !mainMenuReady(image.data)) throw new Error("on-demand screenshot did not show the menu");
   const addStarted = performance.now();
   const added = await call("add_server", { instance: id, name: `MCP Smoke ${process.pid}`,
     address: `${host}:19133` });
   if (!added.saved || added.already_exists) throw new Error("new server was not saved");
   console.log(JSON.stringify({ stage: "add_server", ms: Math.round(performance.now() - addStarted), added }));
   const state = await call("state", { instance: id });
-  console.log(JSON.stringify({ stage: "state", fps_cap: state.fps_cap }));
+  if (!state.render_on_demand) throw new Error("on-demand render mode was lost during input");
+  console.log(JSON.stringify({ stage: "state", fps_cap: state.fps_cap, render_on_demand: state.render_on_demand }));
 } finally {
   if (launched) await call("stop", { instance: id });
   await client.close();

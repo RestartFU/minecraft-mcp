@@ -195,3 +195,35 @@ exposes an OpenGL ES render path; skipping only `eglSwapBuffers` would still
 leave the game's draw work in place. An early return from the game renderer
 would require a separately verified Android binary hook and a way to resume
 drawing for MCP screenshots.
+
+## On-demand draw probe
+
+On 2026-09-26, the launcher fork gained stable OpenGL ES draw wrappers that
+skip raster calls during passive periods. A screenshot request arms the next
+complete frame at a swap boundary; `glReadPixels` runs before that frame swaps.
+The game loop and FPS cap continue running. The installed Minecraft 1.26.50.4
+client was tested at 854×480 in the signed-in Fedora Flatpak profile.
+
+After the menu appeared, one bounded client warmed for 15 seconds, then
+alternated continuous and on-demand drawing. Each line is six seconds of
+`/proc/<game-pid>/stat` CPU time. Screenshots were excluded from those CPU
+windows and checked separately; all six recognized the Play menu. The
+panorama changed across captures, confirming a fresh rendered frame.
+
+| Rendering | FPS cap | CPU cores used | Screenshot latency |
+|---|---:|---:|---:|
+| Continuous | 20 | 0.243 | 58 ms |
+| On demand | 20 | 0.112 | 98 ms |
+| Continuous, repeated | 20 | 0.242 | 47 ms |
+| On demand, repeated | 20 | 0.107 | 98 ms |
+| Continuous | 5 | 0.068 | 49 ms |
+| On demand | 5 | 0.030 | 397 ms |
+
+The on-demand gate roughly halved steady menu CPU at each cap. The earlier
+startup test still governs launch: start at 20 FPS, then use on-demand drawing
+and 5 FPS when the client is passively waiting. `bun scripts/render_benchmark.ts`
+repeats the bounded measurement and stops its client. `bun scripts/smoke.ts`
+also exercised on-demand MCP capture and adding a saved server through the UI;
+that completed in 2.97 seconds in the candidate launcher and 2.85 seconds
+after installing the binary. These results are for a settled menu; active world
+rendering and server joining were not benchmarked with the gate enabled.

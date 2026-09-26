@@ -35,3 +35,6 @@ idle for two hours.
 The local MCP source defaults to 20 FPS and early-return launch. Already-running MCP
 processes retain their old defaults until their normal restart; pass explicit values there.
 Do not restart an MCP process with live clients just to pick up defaults.
+The installed versioned launcher supports the socket `render` command used by
+`set_render_mode`. Its previous binary is backed up as
+`/home/danick/.local/libexec/mcpelauncher-client-agent-26.50.pre-render`.

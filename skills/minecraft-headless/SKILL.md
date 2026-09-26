@@ -21,11 +21,14 @@ The local cleanup timer stops MCP-owned clients after two hours without MCP acti
 preserves game data; use the normal `stop` tool promptly instead of relying on the timer.
 
 Keep **20 FPS through startup, menus, and joining**. If a client must remain open for
-passive waiting after the screen is settled, call `set_fps` with `cap: 5`; restore
-`cap: 20` before active navigation, gameplay, or proof capture. The [local renderer
-probe](references/benchmarks.md#renderer-and-idle-fps-probe) found that 5 FPS cut
-settled menu CPU use, while starting at 5 FPS delayed the menu and consumed more
-total CPU. `graphics_api:7` did not enable Noop on this Android client.
+passive waiting after the screen is settled, call `set_render_mode` with
+`on_demand: true` and `set_fps` with `cap: 5`. Screenshots still render a fresh
+full frame; at 5 FPS a capture may take up to about 400 ms. Restore
+`on_demand: false` and `cap: 20` before active gameplay or time-sensitive UI
+work. The [local renderer probe](references/benchmarks.md#on-demand-draw-probe)
+measured about 3% of one CPU core for an idle menu in on-demand mode at 5 FPS.
+Starting at 5 FPS delayed the menu and consumed more total CPU.
+`graphics_api:7` did not enable Noop on this Android client.
 
 ## Default loop for known menu navigation
 
