@@ -20,14 +20,15 @@ Use the installed Minecraft MCP off-screen. For known, repeated menu navigation,
 The local cleanup timer stops MCP-owned clients after two hours without MCP activity. It
 preserves game data; use the normal `stop` tool promptly instead of relying on the timer.
 
-Keep **20 FPS through startup, menus, and joining**. If a client must remain open for
-passive waiting after the screen is settled, call `set_render_mode` with
-`on_demand: true` and `set_fps` with `cap: 5`. Screenshots still render a fresh
-full frame; at 5 FPS a capture may take up to about 400 ms. Restore
-`on_demand: false` and `cap: 20` before active gameplay or time-sensitive UI
-work. The [local renderer probe](references/benchmarks.md#on-demand-draw-probe)
-measured about 3% of one CPU core for an idle menu in on-demand mode at 5 FPS.
-Starting at 5 FPS delayed the menu and consumed more total CPU.
+Keep **20 FPS throughout routine sessions**, including passive waiting. Once the
+screen is settled and a client must remain open without active work, call
+`set_render_mode` with `on_demand: true`; this keeps fresh screenshots near
+100 ms while using about 11% of one CPU core at the idle menu. Restore
+`on_demand: false` before active gameplay or time-sensitive UI work. Use 5 FPS
+only when the task explicitly prioritizes lower CPU over responsiveness: the
+[local renderer probe](references/benchmarks.md#on-demand-draw-probe) measured
+about 3% of one core, but one screenshot took 397 ms. Starting at 5 FPS also
+delayed the menu and consumed more total CPU.
 `graphics_api:7` did not enable Noop on this Android client.
 
 ## Default loop for known menu navigation

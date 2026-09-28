@@ -188,8 +188,8 @@ After a separate 12-second menu settle, one client alternated 20, 5, 20, and
 
 That is about **0.18 fewer CPU cores per settled idle client** in this menu
 probe. Screenshots still worked at 5 FPS, though a capture may have to wait for
-the next 200 ms frame. This supports `set_fps({cap:5})` only for passive periods
-when a client must stay open, followed by `set_fps({cap:20})` before active work.
+the next 200 ms frame. The later on-demand draw probe supports keeping 20 FPS
+for routine responsiveness and reserving 5 FPS for explicit CPU-priority work.
 It does not establish the effect on time-sensitive gameplay. The launcher fork
 exposes an OpenGL ES render path; skipping only `eglSwapBuffers` would still
 leave the game's draw work in place. An early return from the game renderer
@@ -219,9 +219,10 @@ panorama changed across captures, confirming a fresh rendered frame.
 | Continuous | 5 | 0.068 | 49 ms |
 | On demand | 5 | 0.030 | 397 ms |
 
-The on-demand gate roughly halved steady menu CPU at each cap. The earlier
-startup test still governs launch: start at 20 FPS, then use on-demand drawing
-and 5 FPS when the client is passively waiting. `bun scripts/render_benchmark.ts`
+The on-demand gate roughly halved steady menu CPU at each cap. Keep 20 FPS for
+routine sessions, using on-demand drawing alone while passively waiting. Its
+roughly 100 ms capture response is a better routine tradeoff than the measured
+397 ms at 5 FPS. `bun scripts/render_benchmark.ts`
 repeats the bounded measurement and stops its client. `bun scripts/smoke.ts`
 also exercised on-demand MCP capture and adding a saved server through the UI;
 that completed in 2.97 seconds in the candidate launcher and 2.85 seconds
