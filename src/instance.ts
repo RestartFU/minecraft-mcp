@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentSocket } from "./socket.ts";
 import { mainMenuReady } from "./menu_ready.ts";
-import { limitFlatpakClient } from "./resource_limits.ts";
+import { limitFlatpakClient, userSystemdEnv } from "./resource_limits.ts";
 
 const APP = process.env.MCPELAUNCHER_APP ?? "/Applications/Minecraft Bedrock Launcher.app";
 const DATA = process.env.MCPELAUNCHER_DATA ?? join(homedir(), "Library/Application Support/mcpelauncher");
@@ -89,7 +89,7 @@ export class Instance {
     const command = unitName ? "systemd-run" : CLIENT;
     const commandArgs = unitName ? ["--user", "--wait", "--pipe", "--quiet", "--collect", `--unit=${unitName}`,
       "-p", `CPUQuota=${opts.cpuQuotaPercent}%`, "-p", `MemoryMax=${opts.memoryLimitMiB}M`, CLIENT, ...args] : args;
-    const proc = spawn(command, commandArgs, { stdio: ["ignore", "pipe", "pipe"] });
+    const proc = spawn(command, commandArgs, { stdio: ["ignore", "pipe", "pipe"], env: unitName ? userSystemdEnv() : process.env });
     const inst = new Instance(id, version, dataDir, socketPath, proc, opts.width, opts.height, unitName);
     inst.touch();
     const keep = (chunk: Buffer) => {
@@ -143,7 +143,7 @@ export class Instance {
   }
 
   private forceStop() {
-    if (this.unitName) spawnSync("systemctl", ["--user", "stop", `${this.unitName}.service`], { stdio: "ignore" });
+    if (this.unitName) spawnSync("systemctl", ["--user", "stop", `${this.unitName}.service`], { stdio: "ignore", env: userSystemdEnv() });
     const gamePid = findClientPid(this.socketPath);
     if (gamePid) process.kill(gamePid, "SIGKILL");
     if (this.proc.exitCode === null) this.proc.kill("SIGKILL");

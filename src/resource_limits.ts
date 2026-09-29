@@ -2,6 +2,18 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
+// The MCP host may omit the user-bus variables even when the login session is
+// running. systemd-run/systemctl still need them to reach this user's scope.
+export function userSystemdEnv(env: NodeJS.ProcessEnv = process.env, uid = process.getuid?.()): NodeJS.ProcessEnv {
+  if (uid === undefined) throw new Error("user systemd scope requires a Unix user ID");
+  const runtimeDir = env.XDG_RUNTIME_DIR || `/run/user/${uid}`;
+  return {
+    ...env,
+    XDG_RUNTIME_DIR: runtimeDir,
+    DBUS_SESSION_BUS_ADDRESS: env.DBUS_SESSION_BUS_ADDRESS || `unix:path=${runtimeDir}/bus`,
+  };
+}
+
 // Flatpak moves the game out of the systemd-run service into its own app scope.
 // The service properties still cap xvfb-run and its wrapper, but not Minecraft.
 export function flatpakScope(cgroup: string): { unit: string; path: string } {
@@ -22,7 +34,7 @@ export function limitsActive(cpuMax: string, memoryMax: string, cpuQuotaPercent:
 }
 
 function systemctl(...args: string[]): string {
-  const result = spawnSync("systemctl", ["--user", ...args], { encoding: "utf8", timeout: 5000 });
+  const result = spawnSync("systemctl", ["--user", ...args], { encoding: "utf8", timeout: 5000, env: userSystemdEnv() });
   if (result.error || result.status !== 0) {
     throw new Error(`systemctl ${args[0]} failed: ${result.error?.message || result.stderr.trim() || `exit ${result.status}`}`);
   }
