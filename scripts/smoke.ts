@@ -2,12 +2,16 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { readFileSync, writeFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { mainMenuReady } from "../src/menu_ready.ts";
 
 const client = new Client({ name: "minecraft-mcp-smoke", version: "1.0.0" });
 const id = `smoke_${process.pid}`;
 const host = `mcp-smoke-${process.pid}.invalid`;
 const serverFile = `${process.env.MCPELAUNCHER_DATA}/games/com.mojang/minecraftpe/external_servers.txt`;
+const evidenceDir = await mkdtemp(join(tmpdir(), "minecraft-mcp-smoke-"));
 let launched = false;
 const call = async (name: string, args: Record<string, unknown> = {}) => {
   const result = await client.callTool({ name, arguments: args });
@@ -29,6 +33,14 @@ try {
   const capture = await client.callTool({ name: "screenshot", arguments: { instance: id, width: 426 } });
   const image = capture.content.find((part) => part.type === "image");
   if (capture.isError || !image || !mainMenuReady(image.data)) throw new Error("on-demand screenshot did not show the menu");
+  const savedPath = join(evidenceDir, "menu.png");
+  const saved = await client.callTool({ name: "screenshot", arguments: {
+    instance: id, width: 854, save_path: savedPath, include_image: false,
+  } });
+  if (saved.isError || saved.content.some((part) => part.type === "image")) throw new Error("path-only screenshot returned an error or inline image");
+  if (!saved.content.some((part) => part.type === "text" && part.text.includes(savedPath))) throw new Error("saved screenshot path was not returned");
+  if (!mainMenuReady(readFileSync(savedPath).toString("base64"))) throw new Error("saved PNG did not show the menu");
+  console.log(JSON.stringify({ stage: "saved_screenshot", include_image: false, verified: true }));
   const addStarted = performance.now();
   const added = await call("add_server", { instance: id, name: `MCP Smoke ${process.pid}`,
     address: `${host}:19133` });
@@ -40,6 +52,7 @@ try {
 } finally {
   if (launched) await call("stop", { instance: id });
   await client.close();
+  await rm(evidenceDir, { recursive: true, force: true });
   const content = readFileSync(serverFile, "utf8");
   const lines = content.split(/(?<=\n)/);
   const removed = lines.filter((line) => line.includes(`:${host}:19133:`));

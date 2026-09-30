@@ -6,6 +6,7 @@ import { DEFAULT_DATA_DIR, Instance, installedVersions } from "./instance.ts";
 import { DEFAULT_CPU_QUOTA_PERCENT, DEFAULT_MEMORY_LIMIT_MIB, preflight } from "./preflight.ts";
 import { nativeInput } from "./native_input.ts";
 import { addServer, externalServerUri, savedServerName, serverConnectUri, waitForStartupServer } from "./add_server.ts";
+import { screenshot } from "./screenshot.ts";
 
 const instances = new Map<string, Instance>();
 let current: string | undefined;
@@ -103,14 +104,14 @@ server.tool("state", "Window size, focus, measured fps and cursor lock", instanc
 
 server.tool(
   "screenshot",
-  "Capture the current frame as PNG",
-  { ...instanceArg, width: z.number().int().min(64).optional().describe("Downscale to this width (aspect kept); default = window size") },
-  async ({ instance, width }) => {
-    const inst = pick(instance);
-    const res = await inst.socket.call("screenshot", width ? { width } : {});
-    inst.shotScale = (res.source_width as number) / (res.width as number);
-    return { content: [{ type: "image" as const, data: res.png_base64 as string, mimeType: "image/png" }, { type: "text" as const, text: `${res.width}x${res.height} (click coordinates are in this image's pixels)` }] };
+  "Capture the current frame as PNG, optionally saving it on the MCP host for evidence or subagent handoff",
+  {
+    ...instanceArg,
+    width: z.number().int().min(64).optional().describe("Downscale to this width (aspect kept); default = window size"),
+    save_path: z.string().min(1).optional().describe("Absolute PNG path on the MCP host; creates parent directories and replaces an existing file"),
+    include_image: z.boolean().default(true).describe("False returns only dimensions and the saved path; requires save_path"),
   },
+  async ({ instance, ...options }) => screenshot(pick(instance), options),
 );
 
 const keySchema = z.string().describe("Key name: a-z, 0-9, f1-f12, space, enter, escape, tab, shift, ctrl, alt, up/down/left/right, ...");

@@ -11,7 +11,7 @@ Use the installed `minecraft-headless` skill for client ownership, launch, input
 
 - Execute known deterministic sequences directly through the MCP. Adding Jev to an already-known menu sequence adds latency.
 - For repeated semantic choices over OCR, log messages or task observations, provide a short state and a closed set of useful choices. The helper returns an ID; your code maps it to an already-reviewed action.
-- Keep unfamiliar screen interpretation, new coordinates, gameplay visual reasoning and complex diagnosis with the parent agent. A parent-written image description followed by Jev still requires that parent turn; it is not a visual automation speedup.
+- For routine unfamiliar-screen classification, use the [saved-PNG vision handoff](../minecraft-headless/SKILL.md#delegate-screenshot-interpretation) when delegation is useful and authorized. Keep new coordinates, gameplay visual reasoning and complex diagnosis with the parent agent. A parent-written image description followed by Jev still requires that parent turn; it is not a visual automation speedup.
 - Use local OCR crops only after inspecting the actual screenshot and confirming dimensions/layout. Whole-frame OCR missed the small Minecraft menu buttons in the measured trial. Missing OCR text means unknown, not absence of a control.
 
 ## Run a reviewed route without repeated model turns

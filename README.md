@@ -59,6 +59,23 @@ Most tools take an optional `instance`. Use a unique instance ID per task. `list
 current MCP process; `skills/minecraft-headless/scripts/client_inventory.py` counts every
 live agent client on the host.
 
+For evidence or a vision subagent, `screenshot` accepts an absolute `save_path` on
+the MCP host. Add `include_image: false` to return dimensions and the path without
+sending the image to the caller. The default still returns the inline PNG; saving
+creates missing parent directories and replaces the requested file.
+
+```json
+{"instance":"task-id","width":854,"save_path":"/tmp/task-evidence/frame.png","include_image":false}
+```
+
+When parent and subagent share the host filesystem, give the saved path to the
+vision worker and keep the parent as the only input controller. Minecraft instances
+belong to their MCP connection; a separate subagent connection cannot capture or
+control the parent's instance. Use local OCR (optical character recognition) for
+checked labels on known menus, and pixel vision for unfamiliar screens. See the
+[screenshot benchmark](skills/minecraft-headless/references/benchmarks.md#screenshot-interpretation-and-subagent-handoff)
+for measurements and limits.
+
 `type` and `chat` use the bundled native XTest input helper on that instance's private Xvfb
 display. The helper accepts printable ASCII. Screenshots and mouse input use the launcher
 agent socket. See [the skill](skills/minecraft-headless/SKILL.md) for working navigation

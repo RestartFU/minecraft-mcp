@@ -228,3 +228,53 @@ also exercised on-demand MCP capture and adding a saved server through the UI;
 that completed in 2.97 seconds in the candidate launcher and 2.85 seconds
 after installing the binary. These results are for a settled menu; active world
 rendering and server joining were not benchmarked with the gate enabled.
+
+## Screenshot interpretation and subagent handoff
+
+Measured locally on 2026-09-30 with Minecraft 1.26.50.4. Spark was rejected by both
+the native subagent launcher and the installed Codex CLI. The comparison therefore
+used `gpt-6-luna` and `gpt-6.1-sol`, both at medium
+effort, on the same **six saved 854×480 Minecraft MCP frames × three repeats** in
+shuffled order. Cases covered title, Play, loading, and a transition panorama.
+Agents retained context between frames; these are six menu cases, not eighteen
+independent scenarios or a gameplay benchmark.
+
+| Measurement | Median | Result |
+|---|---:|---|
+| Luna image retrieval + visual decision | 3.981 s | 18/18 expected labels |
+| GPT-6.1-Sol image retrieval + visual decision | 10.054 s | 18/18 expected labels |
+| Cropped local OCR, warm | 40.726 ms | 15/18 exact; three conservative loading abstentions |
+| This whole-frame OCR classifier, warm | 129.188 ms | 3/18 exact; false title-menu classifications on Play frames |
+| Native MCP screenshot capture | 91.5 ms | 12 captures; mean 2.848 s, range 46–32,049 ms |
+| Local title → Play → title route | 3.572 s | 3/3 verified final trials |
+
+Luna's median decision was 2.53× faster in this sample. Saved-image clocks include
+image retrieval and the next decision, but exclude parent dispatch and final
+writing/reporting. This does not measure cold subagent startup or full task
+turnaround. OCR used a persistent local Tesseract worker; warm medians exclude its
+first request. Both OCR arms used the same classifier. Whole-frame OCR confused
+Play with the title menu because it also found settings text in a storage notice.
+The fixed, inspected crops avoided those false positives but abstained on loading
+percentages; this is not evidence for unfamiliar layouts.
+
+The capture statistics retain a **32.049 s outlier**: all twelve captures took
+34.177 s combined. Later checks took 92, 47, and 377 ms; the cause and recurrence
+rate remain unknown. The route used one task-owned hidden 20 FPS client, three
+captures, and two 1.5 s settling intervals. Its clock includes capture, OCR,
+input, and settling, but excludes final parent image review. Two failed
+calibration trials remain recorded separately: an Escape tap did not return
+from Play, and a Back click focused its button without activating it. The three
+final routes used Escape press/release and passed visual review.
+
+Direct subagent Minecraft access failed: its separate MCP connection could not
+see the parent-owned client, while the parent confirmed it was running. No input
+was sent by that attempted route, and **no matched live Luna/Sol route completed**.
+Saved PNG handoff worked for every vision trial. Keep capture and input ownership
+with one controller; hand off persisted frames for visual decisions as described
+in the skill. The task-created client was stopped.
+
+The [local report](/home/danick/.local/share/minecraft-benchmarks/2026-09-30-spark/report.md),
+[raw summary](/home/danick/.local/share/minecraft-benchmarks/2026-09-30-spark/summary.json),
+and [method and rerun instructions](/home/danick/.local/share/minecraft-benchmarks/2026-09-30-spark/README.md)
+retain the measurements and failures. Captures and private proof files remain
+outside this repository.

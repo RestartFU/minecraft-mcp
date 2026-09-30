@@ -79,3 +79,10 @@ The harness captures `calibration-main.png` and `calibration-play.png`, then wai
 ```
 
 The title-screen target and crops are fixed to the inspected benchmark layout. For a different build/layout, inspect and update those before permitting clicks. The helper never generates coordinates. Existing calibration files skip the pause, so use a fresh output directory when layout is not already verified. Pass `local` as the final argument for the deterministic-only baseline. A fallback aborts the live batch, preserves frames, records the failure and cleans up the owned client; do not treat a nonzero run as completed trials.
+
+## Screenshot handoff follow-up, 2026-09-30
+
+The [headless screenshot decision benchmark](../../minecraft-headless/references/benchmarks.md#screenshot-interpretation-and-subagent-handoff)
+compares Luna, GPT-6.1-Sol, and this helper's whole-frame versus cropped OCR, and
+records three verified local routes. Read it for the measured timings, retained
+failures, and the separate-MCP-connection limitation on direct subagent access.

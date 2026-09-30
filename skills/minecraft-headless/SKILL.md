@@ -47,7 +47,17 @@ The hybrid loop checks labels with local OCR first and asks Jev only when those 
 
 Allow the short route to finish within the calling tool batch, then return its final `image` through `view_image` in that same batch. Keep intermediate captures as local evidence. On `fallback` or error, inspect the failed frame and diagnose it before another action; do not rerun the same plan blindly. The runner leaves the client alive, so resume it for subsequent work and stop it only when the task is complete.
 
-Unknown screens, gameplay geometry, layout evaluation and visual feature correctness still need parent vision. Local text checks establish navigation state, not that a rendered feature looks correct. If switching back to native MCP clicks after the helper, capture once at the intended navigation width to establish that connection's coordinate scale.
+Local OCR (optical character recognition) reads visible labels to establish known navigation state. It cannot prove that a rendered feature looks correct. Gameplay geometry, layout evaluation and complex visual diagnosis still need parent vision. For routine screen classification or visible-control checks, consider a reusable Luna vision subagent when model selection and delegation are authorized; preserve any model the user chose. Use the saved-PNG workflow below. If switching back to native MCP clicks after the helper, capture once at the intended navigation width to establish that connection's coordinate scale.
+
+## Delegate screenshot interpretation
+
+Keep one agent as the Minecraft input controller. A subagent's separate MCP connection cannot see the parent's instance; an `instance is not running` response is a connection boundary, not a reason to relaunch the parent's client.
+
+On a shared filesystem, the owning connection can call `screenshot` with `save_path: "/absolute/evidence/frame.png"`, `include_image: false`, and the established screenshot width. The tool saves that captured PNG and returns its path without requiring a parent image turn. Keep evidence outside repositories. Saving replaces the specified file; use distinct paths for observations that must remain available. Existing MCP processes need a normal reconnect to discover newly added tool options; on an older connection, persist its returned image before handing off the path.
+
+Give the worker the PNG path, a short question and the useful screen/action choices. It should inspect pixels with `view_image`, report uncertainty, and return an observation or recommendation without sending Minecraft input. The controller checks that recommendation against the current frame and its allowed actions, executes it once, then verifies the outcome. Reuse the worker when there are further visual decisions; known deterministic routes still belong in the local loop.
+
+The [screenshot benchmark](references/benchmarks.md#screenshot-interpretation-and-subagent-handoff) measured Luna and the current model on saved menu frames. It does not establish a full-task or gameplay speedup. Do not substitute OCR for required visual feature verification.
 
 ## Skip failures already established on this build
 
