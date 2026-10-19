@@ -3,7 +3,17 @@
 
 Keep validation screenshots, recordings, logs, and proof-only README files outside every repository and worktree. Do not copy, stage, or commit them into the project, including under `docs/proofs/`, or create a Git branch or repository just to host them.
 
-When the user requests proof on a GitHub PR or issue, upload the captures as GitHub attachments using an available upload tool or GitHub's attachment UI. Embed the returned attachment URLs in the requested PR or issue and verify they display. A GitHub blob/raw URL backed by a committed file is not an attachment.
+When the user requests proof on a GitHub PR or issue, use the authenticated `gh` CLI to upload the captures as GitHub attachments. Check the installed command's help before declaring uploads unsupported or asking the user to sign into a browser. Current `gh pr edit` and `gh issue edit` support `--attach`:
+
+```bash
+gh pr edit 123 --repo OWNER/REPO \
+  --attach '/tmp/task-evidence/proof.png#In-game feature enabled'
+gh pr view 123 --repo OWNER/REPO --json body --jq .body
+```
+
+Without a body flag, `gh pr edit --attach` preserves the existing description and appends the attachment. Use `--body-file` only when the description also needs a deliberate edit. Verify the returned attachment URL in the saved body. If an upload command fails, read the body before retrying: successful files may already have been attached even when another file failed.
+
+Use a browser upload only when the CLI is unavailable or a concrete CLI error requires a different route. Do not request browser login merely because attachment support has not been checked. A GitHub blob/raw URL backed by a committed file is not an attachment.
 
 Persist the first valid in-game proof before stopping or changing the client. Pass
 an absolute `save_path` outside the repository to the MCP `screenshot` tool so the
