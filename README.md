@@ -9,6 +9,8 @@ the source for the installed `minecraft` MCP and `minecraft-headless` skill on t
 - Linux with a user systemd manager, `xvfb-run`, `xauth`, Python 3, and the agent-enabled
   mcpelauncher client. The bundled `bin/mcpelauncher-headless-fedora` documents this host's
   Flatpak launcher command; set `MCPELAUNCHER_CLIENT` to the installed wrapper.
+  `bin/mcpelauncher-headless-gpu` renders on a GPU through gamescope instead; see
+  [installation](skills/minecraft-headless/references/installation.md#gpu-rendering).
 - Bun, a locally installed Bedrock version, and a signed-in launcher data directory.
 - On this host, `MCPELAUNCHER_ABI=x86_64`,
   `MCPELAUNCHER_DATA=/home/danick/.var/app/io.mrarm.mcpelauncher/data/mcpelauncher`, and

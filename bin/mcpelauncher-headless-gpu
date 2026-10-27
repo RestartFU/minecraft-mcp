@@ -1,0 +1,50 @@
+#!/bin/sh
+set -eu
+
+if ! command -v gamescope >/dev/null 2>&1; then
+  echo "mcpelauncher-headless-gpu: gamescope is required; install it with: sudo dnf install gamescope" >&2
+  exit 127
+fi
+
+client=${MCPELAUNCHER_AGENT_BINARY:-/home/danick/.local/libexec/mcpelauncher-client-agent}
+if [ ! -x "$client" ]; then
+  echo "mcpelauncher-headless-gpu: install the agent client at $client or set MCPELAUNCHER_AGENT_BINARY" >&2
+  exit 127
+fi
+
+# Like mcpelauncher-headless-fedora, but gamescope's headless backend gives the
+# client a private X display rendered on a GPU instead of software GL under Xvfb.
+# MCPELAUNCHER_VK_DEVICE lists GPUs by vendor:device ID (lspci -nn) in order of
+# preference, separated by commas; the first one present is used. Without a
+# match, gamescope picks its default GPU.
+pci_device_present() {
+  vendor=0x${1%%:*}
+  device=0x${1#*:}
+  for dir in /sys/bus/pci/devices/*; do
+    if [ "$(cat "$dir/vendor" 2>/dev/null)" = "$vendor" ] && [ "$(cat "$dir/device" 2>/dev/null)" = "$device" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+device_args=
+old_ifs=$IFS
+IFS=,
+for candidate in ${MCPELAUNCHER_VK_DEVICE:-}; do
+  if pci_device_present "$candidate"; then
+    device_args="--prefer-vk-device $candidate"
+    break
+  fi
+  echo "mcpelauncher-headless-gpu: GPU $candidate not present; trying the next one" >&2
+done
+IFS=$old_ifs
+
+# shellcheck disable=SC2086
+exec gamescope --backend headless -w 1920 -h 1080 -W 1920 -H 1080 $device_args -- \
+  flatpak run --user --socket=x11 --nosocket=wayland \
+    --filesystem=/home/danick/.local/libexec:ro \
+    --env=EGL_PLATFORM=x11 \
+    --env=LD_LIBRARY_PATH=/home/danick/.local/libexec/mcpelauncher-libs \
+    --command="$client" \
+    io.mrarm.mcpelauncher "$@"

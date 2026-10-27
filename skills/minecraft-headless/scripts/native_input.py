@@ -26,12 +26,12 @@ def instance_display(instance):
             env = dict(part.split(b'=', 1) for part in proc.joinpath('environ').read_bytes().split(b'\0') if b'=' in part)
             display = os.fsdecode(env.get(b'DISPLAY', b''))
             auth = Path(os.fsdecode(env.get(b'XAUTHORITY', b'')))
-            # Require xvfb-run in this client's ancestry; never target the desktop.
+            # Require a private X server in this client's ancestry; never target the desktop.
             parent = proc
             headless = False
             for _ in range(32):
                 args = parent.joinpath('cmdline').read_bytes().split(b'\0')
-                if any(Path(os.fsdecode(a)).name == 'xvfb-run' for a in args if a):
+                if private_x_server(args):
                     headless = True
                     break
                 status = parent.joinpath('status').read_text()
@@ -47,8 +47,17 @@ def instance_display(instance):
         except (OSError, ValueError, IndexError):
             continue
     if len(matches) != 1:
-        raise ValueError(f'Expected one live private-Xvfb client for {instance}; found {len(matches)}')
+        raise ValueError(f'Expected one live private-display client for {instance}; found {len(matches)}')
     return matches[0]
+
+
+def private_x_server(args):
+    """Return whether a command line starts a private X server: xvfb-run or headless gamescope."""
+    names = [Path(os.fsdecode(a)).name for a in args if a]
+    if 'xvfb-run' in names:
+        return True
+    return names[:1] == ['gamescope'] and (
+        b'--backend=headless' in args or any(a == b'--backend' and b == b'headless' for a, b in zip(args, args[1:])))
 
 
 class Keyboard:
