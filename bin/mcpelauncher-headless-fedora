@@ -6,11 +6,18 @@ if ! command -v xvfb-run >/dev/null 2>&1; then
   exit 127
 fi
 
+client=${MCPELAUNCHER_AGENT_BINARY:-/home/danick/.local/libexec/mcpelauncher-client-agent}
+if [ ! -x "$client" ]; then
+  echo "mcpelauncher-headless: install the agent client at $client or set MCPELAUNCHER_AGENT_BINARY" >&2
+  exit 127
+fi
+
 export LIBGL_ALWAYS_SOFTWARE=1
 exec xvfb-run -a --server-args="-screen 0 1920x1080x24 -nolisten tcp" \
-  flatpak run --user \
+  flatpak run --user --socket=x11 --nosocket=wayland \
     --filesystem=/home/danick/.local/libexec:ro \
     --env=LIBGL_ALWAYS_SOFTWARE=1 \
+    --env=EGL_PLATFORM=x11 \
     --env=LD_LIBRARY_PATH=/home/danick/.local/libexec/mcpelauncher-libs \
-    --command=/home/danick/.local/libexec/mcpelauncher-client-agent-26.50 \
+    --command="$client" \
     io.mrarm.mcpelauncher "$@"
