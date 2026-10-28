@@ -55,7 +55,8 @@ systemctl --user enable --now minecraft-mcp-cleanup.timer
 
 `preflight` · `launch` · `stop` · `list` · `state` · `screenshot` · `key` · `hold_key` · `type` ·
 `chat` · `look` · `click` · `mouse_move_to` · `scroll` · `add_server` · `open_uri` · `set_fps` ·
-`set_render_mode` · `wait` · `log`
+`set_render_mode` · `wait` · `log` · `record_start` · `record_status` · `record_stop` ·
+`video_frame` · `video_timelapse` · `upload_file`
 
 Most tools take an optional `instance`. Use a unique instance ID per task. `list` covers the
 current MCP process; `skills/minecraft-headless/scripts/client_inventory.py` counts every
@@ -77,6 +78,19 @@ control the parent's instance. Use local OCR (optical character recognition) for
 checked labels on known menus, and pixel vision for unfamiliar screens. See the
 [screenshot benchmark](skills/minecraft-headless/references/benchmarks.md#screenshot-interpretation-and-subagent-handoff)
 for measurements and limits.
+
+### Video
+
+`record_start` captures the instance's game window from its private X display with ffmpeg
+`x11grab` into a Matroska file on the MCP host; launch the client at the video's size and
+frame rate, such as 1920×1080 with `fps_cap: 60`. `record_stop` finishes the file. Each
+encode uses the first encoder that actually works on the host: Fedora lists `h264_vaapi` and
+`libopenh264` without enabling them, so a recording may fall back to AV1 or VP9.
+`video_frame` returns one frame of a file to check what was captured. `video_timelapse`
+speeds a recording up into a cut under a size limit, as H.264 MP4 when it can and otherwise
+VP9 WebM, which browsers and Discord play inline. `upload_file` sends a file to a
+pre-signed https upload URL without adding credentials, such as the upload URL a service
+issues for one attachment, so a large file never passes through the caller.
 
 `type` and `chat` use the bundled native XTest input helper on that instance's private Xvfb
 display. The helper accepts printable ASCII. Screenshots and mouse input use the launcher

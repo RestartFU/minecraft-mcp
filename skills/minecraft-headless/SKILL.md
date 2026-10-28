@@ -80,6 +80,7 @@ A routine screenshot task must not turn into keyboard-delay benchmarking, launch
 - [Installation](references/installation.md): launch failure, unavailable MCP tools, or client setup; includes the inventory command. Do not rebuild an SDK driver when native tools are available.
 - [Lunar validation](references/lunar-validation.md): current test fixtures, module defaults, saved development credentials, and BDS updates. Match the requested verification scope.
 - [Proof attachments](references/proof-attachments.md): only for requested GitHub evidence uploads.
+- Video: `record_start`/`record_stop` capture the game window at the launched size and FPS; check a file with `video_frame`, cut it with `video_timelapse`, and send it with `upload_file` to a pre-signed upload URL. Recordings stay on the MCP host. See the README's Video section.
 - [Measured benchmarks](references/benchmarks.md): only for performance work or reruns, not ordinary captures.
 
 If MCP or skill use reveals slowness or an edge case, improve this checkout and verify the

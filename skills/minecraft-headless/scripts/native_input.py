@@ -84,6 +84,12 @@ class Keyboard:
         self.held = set()
 
     def focus_game(self):
+        self.find_game()
+        self.x.XRaiseWindow(self.d, self.window)
+        self.x.XSetInputFocus(self.d, self.window, 2, 0)
+        self.x.XFlush(self.d)
+
+    def find_game(self):
         # MCP pointer events do not move the X pointer. Xvfb may still use
         # PointerRoot focus, or a launcher error dialog may own keyboard focus.
         self.x.XDefaultRootWindow.argtypes = [C.c_void_p]
@@ -114,9 +120,6 @@ class Keyboard:
         if len(matches) != 1:
             raise ValueError(f'Expected one Minecraft window on private display; found {len(matches)}')
         self.window = matches[0]
-        self.x.XRaiseWindow(self.d, self.window)
-        self.x.XSetInputFocus(self.d, self.window, 2, 0)
-        self.x.XFlush(self.d)
 
     def click(self, x, y):
         self.x.XTranslateCoordinates.argtypes = [C.c_void_p, C.c_ulong, C.c_ulong, C.c_int, C.c_int,
@@ -180,6 +183,8 @@ def main():
     parser.add_argument('--keys', nargs='*', default=[], help='X key names after text, e.g. Home Delete period')
     parser.add_argument('--click', type=int, nargs=2, metavar=('X', 'Y'), help='Focus a field first, in full window pixels')
     parser.add_argument('--delay-ms', type=int, default=50, help='Per press/release, default suitable for 30 FPS')
+    parser.add_argument('--locate', action='store_true',
+                        help='Only print the private display, X authority and game window; send no input')
     args = parser.parse_args()
     if not 10 <= args.delay_ms <= 1000:
         parser.error('--delay-ms must be 10..1000')
@@ -189,6 +194,15 @@ def main():
         parser.error('--text supports printable ASCII only')
     pid, display, auth = instance_display(args.instance)
     keyboard = Keyboard(display, auth, args.delay_ms)
+    if args.locate:
+        # Recording captures this window on its private display.
+        try:
+            keyboard.find_game()
+        finally:
+            keyboard.close()
+        print(json.dumps({'instance': args.instance, 'pid': pid, 'display': display,
+                          'xauthority': auth, 'window': keyboard.window}))
+        return
     start = time.monotonic()
     try:
         # Validate every requested key before changing the focused field.

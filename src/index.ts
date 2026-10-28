@@ -7,6 +7,7 @@ import { DEFAULT_CPU_QUOTA_PERCENT, DEFAULT_MEMORY_LIMIT_MIB, preflight } from "
 import { nativeInput } from "./native_input.ts";
 import { addServer, externalServerUri, savedServerName, serverConnectUri, waitForStartupServer } from "./add_server.ts";
 import { screenshot } from "./screenshot.ts";
+import { recordingStatus, startRecording, stopAllRecordings, stopRecording, uploadFile, videoFrame, videoTimelapse } from "./recorder.ts";
 
 const instances = new Map<string, Instance>();
 let current: string | undefined;
@@ -199,7 +200,73 @@ server.tool("wait", "Wait for the game to catch up", { ms: z.number().int().min(
 
 server.tool("log", "Recent client log lines", { ...instanceArg, lines: z.number().int().min(1).max(500).default(50) }, async ({ instance, lines }) => text(pick(instance).log.slice(-lines).join("\n")));
 
+server.tool(
+  "record_start",
+  "Record the client's game window to an MKV video on the MCP host with ffmpeg. Launch the client at the size the video should have, such as 1920x1080 with fps_cap 60",
+  {
+    ...instanceArg,
+    save_path: z.string().min(1).describe("Absolute .mkv path on the MCP host"),
+    fps: z.number().int().min(1).max(120).default(60),
+  },
+  async ({ instance, save_path, fps }) => {
+    const inst = pick(instance);
+    return text(await startRecording(inst.id, save_path, fps));
+  },
+);
+
+server.tool("record_status", "Report the client's running recording, if any", instanceArg, async ({ instance }) => text(await recordingStatus(pick(instance).id)));
+
+server.tool("record_stop", "Stop the client's recording and finish its file", { instance: z.string().optional() }, async ({ instance }) => {
+  const id = instance ?? current;
+  if (!id) throw new Error("no instance given");
+  return text(await stopRecording(id));
+});
+
+server.tool(
+  "video_frame",
+  "Show one frame of a video file on the MCP host, to check a recording",
+  {
+    input: z.string().min(1).describe("Absolute video path on the MCP host"),
+    at_seconds: z.number().min(0).default(1),
+    width: z.number().int().min(64).max(1920).default(854),
+  },
+  async ({ input, at_seconds, width }) => {
+    const { png, duration } = await videoFrame(input, at_seconds, width);
+    return { content: [
+      { type: "image" as const, data: png.toString("base64"), mimeType: "image/png" },
+      { type: "text" as const, text: JSON.stringify({ input, at_seconds, duration_seconds: Math.round(duration) }) },
+    ] };
+  },
+);
+
+server.tool(
+  "video_timelapse",
+  "Speed a recording up into an H.264 MP4 under a size limit, for sharing",
+  {
+    input: z.string().min(1).describe("Absolute video path on the MCP host"),
+    output: z.string().min(1).describe("Absolute .mp4 path on the MCP host"),
+    speed: z.number().min(1).max(1000).describe("How many times faster than real time"),
+    max_mb: z.number().min(1).max(4096).describe("Size limit of the result in MiB"),
+    fps: z.number().int().min(1).max(120).default(60),
+    height: z.number().int().min(144).max(2160).default(1080),
+  },
+  async ({ input, output, speed, max_mb, fps, height }) => text(await videoTimelapse(input, output, speed, max_mb, fps, height)),
+);
+
+server.tool(
+  "upload_file",
+  "Upload a file on the MCP host to a pre-signed https upload URL. No credentials are added; the URL itself must authorize the upload",
+  {
+    path: z.string().min(1).describe("Absolute file path on the MCP host"),
+    url: z.string().url(),
+    method: z.enum(["PUT", "POST"]).default("PUT"),
+    content_type: z.string().default("application/octet-stream"),
+  },
+  async ({ path, url, method, content_type }) => text(await uploadFile(path, url, method, content_type)),
+);
+
 async function stopAll() {
+  await stopAllRecordings();
   await Promise.all([...instances.values()].map((i) => i.stop(5_000)));
   process.exit(0);
 }
