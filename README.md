@@ -58,6 +58,11 @@ systemctl --user enable --now minecraft-mcp-cleanup.timer
 `set_render_mode` · `wait` · `log` · `record_start` · `record_status` · `record_stop` ·
 `video_frame` · `video_timelapse` · `upload_file`
 
+Clients log to their systemd unit's journal and keep running when the MCP connection that
+launched them closes. A later connection adopts one by naming its instance id in any tool
+call; `list` reports `adoptable` ids. A client that another live connection still owns is
+refused rather than taken over.
+
 Most tools take an optional `instance`. Use a unique instance ID per task. `list` covers the
 current MCP process; `skills/minecraft-headless/scripts/client_inventory.py` counts every
 live agent client on the host.

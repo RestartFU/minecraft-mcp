@@ -42,15 +42,16 @@ export class Instance {
   readonly height: number;
   readonly socketPath: string;
   readonly leasePath: string;
-  readonly proc: ChildProcess;
+  // proc is the launcher this connection spawned; an adopted client has none.
+  readonly proc?: ChildProcess;
   readonly unitName?: string;
   gamePid = 0;
   socket!: AgentSocket;
-  readonly log: string[] = [];
+  private readonly piped: string[] = [];
   // Scale from the last screenshot's pixels to window content pixels, so callers click on what they saw.
   shotScale = 1;
 
-  private constructor(id: string, version: string, dataDir: string, socketPath: string, proc: ChildProcess, width: number, height: number, unitName?: string) {
+  private constructor(id: string, version: string, dataDir: string, socketPath: string, proc: ChildProcess | undefined, width: number, height: number, unitName?: string) {
     this.id = id;
     this.version = version;
     this.dataDir = dataDir;
@@ -87,18 +88,20 @@ export class Instance {
     if (existsSync(modsDir)) args.push("-m", modsDir + "/");
     const unitName = process.platform === "linux" ? `minecraft-mcp-${id}-${process.pid}` : undefined;
     const command = unitName ? "systemd-run" : CLIENT;
-    const commandArgs = unitName ? ["--user", "--wait", "--pipe", "--quiet", "--collect", `--unit=${unitName}`,
+    // The client logs to the journal, not to a pipe into this process, so it
+    // outlives this MCP connection and a later one can adopt it.
+    const commandArgs = unitName ? ["--user", "--wait", "--quiet", "--collect", `--unit=${unitName}`,
       "-p", `CPUQuota=${opts.cpuQuotaPercent}%`, "-p", `MemoryMax=${opts.memoryLimitMiB}M`, CLIENT, ...args] : args;
     const proc = spawn(command, commandArgs, { stdio: ["ignore", "pipe", "pipe"], env: unitName ? userSystemdEnv() : process.env });
     const inst = new Instance(id, version, dataDir, socketPath, proc, opts.width, opts.height, unitName);
     inst.touch();
     const keep = (chunk: Buffer) => {
-      for (const line of chunk.toString().split("\n")) if (line) inst.log.push(line);
-      if (inst.log.length > 500) inst.log.splice(0, inst.log.length - 500);
+      for (const line of chunk.toString().split("\n")) if (line) inst.piped.push(line);
+      if (inst.piped.length > 500) inst.piped.splice(0, inst.piped.length - 500);
     };
     proc.stdout!.on("data", keep);
     proc.stderr!.on("data", keep);
-    const exited = new Promise<never>((_, reject) => proc.once("exit", (code) => reject(new Error(`client exited with code ${code}\n${inst.log.slice(-20).join("\n")}`))));
+    const exited = new Promise<never>((_, reject) => proc.once("exit", (code) => reject(new Error(`client exited with code ${code}\n${inst.log(20).join("\n")}`))));
     try {
       inst.socket = await Promise.race([AgentSocket.connect(socketPath, 90_000), exited]);
       inst.gamePid = findClientPid(socketPath);
@@ -113,7 +116,61 @@ export class Instance {
   }
 
   touch() {
-    writeFileSync(this.leasePath, JSON.stringify({ id: this.id, ownerPid: process.pid, lastUsed: Date.now() }), { mode: 0o600 });
+    const lease: Lease = { id: this.id, ownerPid: process.pid, lastUsed: Date.now(), unitName: this.unitName, version: this.version, width: this.width, height: this.height };
+    writeFileSync(this.leasePath, JSON.stringify(lease), { mode: 0o600 });
+  }
+
+  /**
+   * Adopts the running client with this id that this connection did not
+   * launch, such as one an MCP connection that has since closed left behind.
+   * It returns undefined when no such client runs, and refuses one a live
+   * connection still owns.
+   */
+  static async adopt(id: string): Promise<Instance | undefined> {
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) return undefined;
+    const socketPath = join(SOCKET_DIR, `mcpelauncher-agent-${id}.sock`);
+    const gamePid = findClientPid(socketPath);
+    if (!gamePid) return undefined;
+    const lease = readLease(`${socketPath}.lease.json`);
+    if (lease?.ownerPid && lease.ownerPid !== process.pid && processAlive(lease.ownerPid)) {
+      throw new Error(`instance ${id} belongs to another live MCP connection (pid ${lease.ownerPid})`);
+    }
+    const argv = readFileSync(`/proc/${gamePid}/cmdline`).toString().split("\0");
+    const flag = (name: string) => argv[argv.indexOf(name) + 1];
+    const socket = await AgentSocket.connect(socketPath, 5_000);
+    const state = await socket.call("state").catch(() => ({} as Record<string, unknown>));
+    const width = Number(state.width ?? lease?.width ?? flag("-ww"));
+    const height = Number(state.height ?? lease?.height ?? flag("-wh"));
+    const version = lease?.version ?? flag("-dg")?.split("/").at(-1) ?? "unknown";
+    const inst = new Instance(id, version, flag("-dd") ?? DATA, socketPath, undefined, width, height, lease?.unitName);
+    inst.socket = socket;
+    inst.gamePid = gamePid;
+    inst.touch();
+    return inst;
+  }
+
+  /** Lists running clients no live MCP connection owns, which adopt can take over. */
+  static orphans(): string[] {
+    if (!existsSync(SOCKET_DIR)) return [];
+    const ids: string[] = [];
+    for (const name of readdirSync(SOCKET_DIR)) {
+      const match = /^mcpelauncher-agent-([a-zA-Z0-9_-]+)\.sock$/.exec(name);
+      if (!match) continue;
+      const socketPath = join(SOCKET_DIR, name);
+      const lease = readLease(`${socketPath}.lease.json`);
+      if (findClientPid(socketPath) && !(lease?.ownerPid && processAlive(lease.ownerPid))) ids.push(match[1]);
+    }
+    return ids;
+  }
+
+  /** Recent client log lines: the unit's journal, or the launcher's pipe. */
+  log(lines: number): string[] {
+    if (this.unitName) {
+      const out = spawnSync("journalctl", ["--user", "-u", `${this.unitName}.service`, "-n", String(lines), "-o", "cat", "--no-pager"],
+        { encoding: "utf8", env: userSystemdEnv() });
+      if (out.status === 0) return out.stdout.split("\n").filter(Boolean);
+    }
+    return this.piped.slice(-lines);
   }
 
   // FPS becomes nonzero on the loading screen. Inspect the actual menu instead of
@@ -139,14 +196,20 @@ export class Instance {
   }
 
   get alive() {
-    return (this.proc.exitCode === null && !this.proc.killed) || findClientPid(this.socketPath) !== 0;
+    return (this.proc !== undefined && this.proc.exitCode === null && !this.proc.killed) || findClientPid(this.socketPath) !== 0;
+  }
+
+  /** Lets the client keep running after this connection closes, for adoption. */
+  release() {
+    this.socket?.close();
+    writeFileSync(this.leasePath, JSON.stringify({ ...readLease(this.leasePath), ownerPid: 0 }), { mode: 0o600 });
   }
 
   private forceStop() {
     if (this.unitName) spawnSync("systemctl", ["--user", "stop", `${this.unitName}.service`], { stdio: "ignore", env: userSystemdEnv() });
     const gamePid = findClientPid(this.socketPath);
     if (gamePid) process.kill(gamePid, "SIGKILL");
-    if (this.proc.exitCode === null) this.proc.kill("SIGKILL");
+    if (this.proc && this.proc.exitCode === null) this.proc.kill("SIGKILL");
   }
 
   async stop(graceMs = 35_000) {
@@ -164,6 +227,33 @@ export class Instance {
     if (this.alive) this.forceStop();
     this.socket.close();
     rmSync(this.leasePath, { force: true });
+  }
+}
+
+interface Lease {
+  id: string;
+  ownerPid: number;
+  lastUsed: number;
+  unitName?: string;
+  version?: string;
+  width?: number;
+  height?: number;
+}
+
+function readLease(path: string): Lease | undefined {
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
   }
 }
 

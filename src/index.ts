@@ -12,9 +12,19 @@ import { recordingStatus, startRecording, stopAllRecordings, stopRecording, uplo
 const instances = new Map<string, Instance>();
 let current: string | undefined;
 
-function pick(id?: string): Instance {
+async function pick(id?: string): Promise<Instance> {
   const key = id ?? current;
-  const inst = key ? instances.get(key) : undefined;
+  let inst = key ? instances.get(key) : undefined;
+  if (key && (!inst || !inst.alive)) {
+    // A client this connection did not launch, such as one an earlier
+    // connection left running, is adopted by its instance id.
+    const adopted = await Instance.adopt(key);
+    if (adopted) {
+      instances.set(key, adopted);
+      current = key;
+      inst = adopted;
+    }
+  }
   if (!inst || !inst.alive) throw new Error(key ? `instance ${key} is not running` : "no running instance; call launch first");
   inst.touch();
   return inst;
@@ -86,7 +96,7 @@ server.tool(
 );
 
 server.tool("stop", "Quit a running client (in-game quit, force-killed after 35s)", instanceArg, async ({ instance }) => {
-  const inst = pick(instance);
+  const inst = await pick(instance);
   await inst.stop();
   instances.delete(inst.id);
   if (current === inst.id) current = [...instances.keys()].pop();
@@ -97,11 +107,13 @@ server.tool("list", "List installed game versions and running instances", {}, as
   text({
     versions: installedVersions(),
     instances: [...instances.values()].filter((i) => i.alive).map((i) => ({ id: i.id, version: i.version, pid: i.gamePid, data_dir: i.dataDir })),
+    // Clients left by a closed connection; any tool call naming one adopts it.
+    adoptable: Instance.orphans().filter((id) => !instances.get(id)?.alive),
     current,
   }),
 );
 
-server.tool("state", "Window size, focus, measured fps and cursor lock", instanceArg, async ({ instance }) => text(await pick(instance).socket.call("state")));
+server.tool("state", "Window size, focus, measured fps and cursor lock", instanceArg, async ({ instance }) => text(await (await pick(instance)).socket.call("state")));
 
 server.tool(
   "screenshot",
@@ -112,7 +124,7 @@ server.tool(
     save_path: z.string().min(1).optional().describe("Absolute PNG path on the MCP host; creates parent directories and replaces an existing file"),
     include_image: z.boolean().default(true).describe("False returns only dimensions and the saved path; requires save_path"),
   },
-  async ({ instance, ...options }) => screenshot(pick(instance), options),
+  async ({ instance, ...options }) => screenshot(await pick(instance), options),
 );
 
 const keySchema = z.string().describe("Key name: a-z, 0-9, f1-f12, space, enter, escape, tab, shift, ctrl, alt, up/down/left/right, ...");
@@ -121,7 +133,7 @@ server.tool(
   "key",
   "Press a key (tap by default; use action press/release to hold across calls)",
   { ...instanceArg, key: keySchema, action: z.enum(["tap", "press", "release"]).default("tap"), hold_ms: z.number().int().min(1).default(60), mods: z.array(z.enum(["shift", "ctrl", "alt", "super"])).optional() },
-  async ({ instance, ...args }) => text(await pick(instance).socket.call("key", args)),
+  async ({ instance, ...args }) => text(await (await pick(instance)).socket.call("key", args)),
 );
 
 server.tool(
@@ -129,7 +141,7 @@ server.tool(
   "Hold a key for a duration (walking: w/a/s/d, jump: space, sneak: shift, sprint: ctrl)",
   { ...instanceArg, key: keySchema, ms: z.number().int().min(1).max(60_000) },
   async ({ instance, key, ms }) => {
-    const inst = pick(instance);
+    const inst = await pick(instance);
     await inst.socket.call("key", { key, action: "press" });
     await sleep(ms);
     await inst.socket.call("key", { key, action: "release" });
@@ -138,59 +150,59 @@ server.tool(
 );
 
 server.tool("type", "Type text into the focused field with the client's private Xvfb keyboard", { ...instanceArg, text: z.string() }, async ({ instance, text: t }) => {
-  const inst = pick(instance);
+  const inst = await pick(instance);
   return text(await nativeInput(inst.id, t));
 });
 
 server.tool("chat", "Open chat, type a message and send it", { ...instanceArg, message: z.string() }, async ({ instance, message }) => {
-  const inst = pick(instance);
+  const inst = await pick(instance);
   await inst.socket.call("key", { key: "t" });
   await sleep(400);
   return text(await nativeInput(inst.id, message, ["Return"]));
 });
 
-server.tool("look", "Turn the camera by a relative mouse delta (pixels)", { ...instanceArg, dx: z.number(), dy: z.number() }, async ({ instance, dx, dy }) => text(await pick(instance).socket.call("mouse_move", { dx, dy })));
+server.tool("look", "Turn the camera by a relative mouse delta (pixels)", { ...instanceArg, dx: z.number(), dy: z.number() }, async ({ instance, dx, dy }) => text(await (await pick(instance)).socket.call("mouse_move", { dx, dy })));
 
 server.tool(
   "click",
   "Click at coordinates in the last screenshot's pixels (or at the last position). left = attack/break, right = use/place",
   { ...instanceArg, button: z.enum(["left", "right", "middle"]).default("left"), x: z.number().optional(), y: z.number().optional(), action: z.enum(["tap", "press", "release"]).default("tap"), hold_ms: z.number().int().min(1).default(60) },
   async ({ instance, x, y, ...args }) => {
-    const inst = pick(instance);
+    const inst = await pick(instance);
     const scaled = x !== undefined && y !== undefined ? { x: x * inst.shotScale, y: y * inst.shotScale } : {};
     return text(await inst.socket.call("click", { ...args, ...scaled }));
   },
 );
 
 server.tool("mouse_move_to", "Move the cursor to coordinates in the last screenshot's pixels (menus; in-world use look)", { ...instanceArg, x: z.number(), y: z.number() }, async ({ instance, x, y }) => {
-  const inst = pick(instance);
+  const inst = await pick(instance);
   return text(await inst.socket.call("mouse_pos", { x: x * inst.shotScale, y: y * inst.shotScale }));
 });
 
-server.tool("scroll", "Scroll the mouse wheel (hotbar / lists)", { ...instanceArg, dy: z.number() }, async ({ instance, dy }) => text(await pick(instance).socket.call("scroll", { dy })));
+server.tool("scroll", "Scroll the mouse wheel (hotbar / lists)", { ...instanceArg, dy: z.number() }, async ({ instance, dy }) => text(await (await pick(instance)).socket.call("scroll", { dy })));
 
 server.tool(
   "add_server",
   "Add an external server using Minecraft's URI or form fallback and verify it was saved (854×480 clients)",
   { ...instanceArg, name: z.string(), address: z.string().describe("host or host:port (default port 19132)"),
     join: z.boolean().default(false).describe("After saving, connect and confirm the external-server prompt; does not wait for the world") },
-  async ({ instance, name, address, join }) => text(await addServer(pick(instance), name, address, join)),
+  async ({ instance, name, address, join }) => text(await addServer(await pick(instance), name, address, join)),
 );
 
 server.tool(
   "open_uri",
   "Send a raw minecraft: URI to the game (deep links: servers, worlds, marketplace)",
   { ...instanceArg, uri: z.string().describe("Must start with minecraft:") },
-  async ({ instance, uri }) => text(await pick(instance).socket.call("uri", { uri })),
+  async ({ instance, uri }) => text(await (await pick(instance)).socket.call("uri", { uri })),
 );
 
-server.tool("set_fps", "Change the render cap at runtime (0 = uncapped while focused)", { ...instanceArg, cap: z.number().int().min(0) }, async ({ instance, cap }) => text(await pick(instance).socket.call("fps", { cap })));
+server.tool("set_fps", "Change the render cap at runtime (0 = uncapped while focused)", { ...instanceArg, cap: z.number().int().min(0) }, async ({ instance, cap }) => text(await (await pick(instance)).socket.call("fps", { cap })));
 
 server.tool(
   "set_render_mode",
   "Skip OpenGL draws between screenshots while keeping the game loop running; each screenshot renders a fresh full frame",
   { ...instanceArg, on_demand: z.boolean().describe("True skips passive drawing; false renders every frame") },
-  async ({ instance, on_demand }) => text(await pick(instance).socket.call("render", { on_demand })),
+  async ({ instance, on_demand }) => text(await (await pick(instance)).socket.call("render", { on_demand })),
 );
 
 server.tool("wait", "Wait for the game to catch up", { ms: z.number().int().min(1).max(60_000) }, async ({ ms }) => {
@@ -198,7 +210,7 @@ server.tool("wait", "Wait for the game to catch up", { ms: z.number().int().min(
   return text({ ok: true });
 });
 
-server.tool("log", "Recent client log lines", { ...instanceArg, lines: z.number().int().min(1).max(500).default(50) }, async ({ instance, lines }) => text(pick(instance).log.slice(-lines).join("\n")));
+server.tool("log", "Recent client log lines", { ...instanceArg, lines: z.number().int().min(1).max(500).default(50) }, async ({ instance, lines }) => text((await pick(instance)).log(lines).join("\n")));
 
 server.tool(
   "record_start",
@@ -209,12 +221,12 @@ server.tool(
     fps: z.number().int().min(1).max(120).default(60),
   },
   async ({ instance, save_path, fps }) => {
-    const inst = pick(instance);
+    const inst = await pick(instance);
     return text(await startRecording(inst.id, save_path, fps));
   },
 );
 
-server.tool("record_status", "Report the client's running recording, if any", instanceArg, async ({ instance }) => text(await recordingStatus(pick(instance).id)));
+server.tool("record_status", "Report the client's running recording, if any", instanceArg, async ({ instance }) => text(await recordingStatus((await pick(instance)).id)));
 
 server.tool("record_stop", "Stop the client's recording and finish its file", { instance: z.string().optional() }, async ({ instance }) => {
   const id = instance ?? current;
@@ -272,5 +284,15 @@ async function stopAll() {
 }
 process.on("SIGINT", stopAll);
 process.on("SIGTERM", stopAll);
+
+// A closed connection leaves its clients running for the next one to adopt:
+// restarting the caller must not lose a client mid-task.
+async function release() {
+  await stopAllRecordings();
+  for (const inst of instances.values()) if (inst.alive) inst.release();
+  process.exit(0);
+}
+process.stdin.once("end", release);
+process.stdin.once("close", release);
 
 await server.connect(new StdioServerTransport());
