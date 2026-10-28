@@ -40,9 +40,15 @@ for candidate in ${MCPELAUNCHER_VK_DEVICE:-}; do
 done
 IFS=$old_ifs
 
+# Clients stay silent: they run in the desktop session, so any sound would
+# play through the user's own audio device. The sandbox gets no PulseAudio
+# socket, SDL uses its dummy driver, and ALSA has no device configuration.
 # shellcheck disable=SC2086
 exec gamescope --backend headless -w 1920 -h 1080 -W 1920 -H 1080 $device_args -- \
-  flatpak run --user --socket=x11 --nosocket=wayland \
+  flatpak run --user --socket=x11 --nosocket=wayland --nosocket=pulseaudio \
+    --env=PULSE_SERVER=unix:/nonexistent \
+    --env=SDL_AUDIO_DRIVER=dummy --env=SDL_AUDIODRIVER=dummy \
+    --env=ALSA_CONFIG_PATH=/dev/null \
     --filesystem=/home/danick/.local/libexec:ro \
     --env=EGL_PLATFORM=x11 \
     --env=LD_LIBRARY_PATH=/home/danick/.local/libexec/mcpelauncher-libs \

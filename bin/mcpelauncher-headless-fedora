@@ -13,8 +13,12 @@ if [ ! -x "$client" ]; then
 fi
 
 export LIBGL_ALWAYS_SOFTWARE=1
+# Clients stay silent: see mcpelauncher-headless-gpu.
 exec xvfb-run -a --server-args="-screen 0 1920x1080x24 -nolisten tcp" \
-  flatpak run --user --socket=x11 --nosocket=wayland \
+  flatpak run --user --socket=x11 --nosocket=wayland --nosocket=pulseaudio \
+    --env=PULSE_SERVER=unix:/nonexistent \
+    --env=SDL_AUDIO_DRIVER=dummy --env=SDL_AUDIODRIVER=dummy \
+    --env=ALSA_CONFIG_PATH=/dev/null \
     --filesystem=/home/danick/.local/libexec:ro \
     --env=LIBGL_ALWAYS_SOFTWARE=1 \
     --env=EGL_PLATFORM=x11 \
