@@ -7,11 +7,39 @@ For Lunar development and verification, use the existing remote test servers, in
 
 Run the worktree's Lunar proxy against the selected upstream and connect the off-screen Minecraft MCP client to that proxy for actual fix validation. Use the existing authenticated account/cache flow when the server requires Microsoft authentication; an offline probe rejected for authentication still demonstrates that the endpoint is reachable. Do not print tokens or bypass authentication. A failed local Dragonfly join or an obsolete `bds.lunarproxy.net` hostname does not establish that the configured remote servers are unavailable. Keep changes to shared test worlds bounded to the verification and clean up task-created fixtures when practical.
 
-**Join address from a remote MCP host.** When the MCP runs on a different machine and network from the Lunar host, the LAN address Lunar prints at startup is unreachable from it: the client shows "Multiplayer Connection Failed … trouble establishing a connection to multiplayer services" and no packet reaches the proxy. Join through the Lunar host's public DNS name and the same port instead; the user's private instructions name it. Only a client on the Lunar host itself, such as the local fallback, can use the LAN or loopback address.
+## Joining a Lunar proxy (Minecraft 26.60+)
+
+Read this before the first join; it replaces trial and error. Host-specific values (public name, forwarded port range, which machine runs what) are in the user's private instructions.
+
+**How a 26.60 client joins `host:port`.** RakNet is switched off for vanilla clients. The client first asks `GET /v1/join` over **TCP** on that port (https, then http), then opens a **WebRTC** connection (ICE over **UDP**, then DTLS/SCTP). Lunar's development proxy (`go run ./cmd/lunar`) therefore listens on **TCP** `-port` only; there is no RakNet UDP listener to relay. A UDP-only relay or port forward, which worked before 26.60, no longer carries a join.
+
+**Pick the route from where the client runs:**
+
+- **Client on the same machine as Lunar** (the MCP's local fallback, or a Lunar started on the MCP host): join `127.0.0.1:<port>`. Nothing else is needed.
+- **Client on another network** (the usual remote MCP host): join `<public name>:<port>` where the router forwards that port in **both TCP and UDP** to the Lunar machine, and start Lunar with `-public-host <public name>`. That flag makes WebRTC media use UDP on the same port number and offer the public IPv4 address. Without it the client completes signaling, then fails ICE: Lunar only offers private addresses. Never join the LAN address Lunar prints, a WireGuard peer address, or a UDP relay from another network.
+- Before launching the game for a remote join, check signaling from the client's machine: `curl -s -m5 http://<public name>:<port>/v1/join` must return JSON naming "Lunar Proxy". If it times out, the port is not forwarded or Lunar is not listening; fix that first.
+
+**Client steps (1.26.60.4, 854×480):**
+
+1. Prefer `launch` with `server_to_join: { name, address }`, or `add_server` with `join: true` on a running client. Both wait for Microsoft sign-in (the menu renders first; "Signing in with your Microsoft account…" at the bottom left means queued URIs have not run yet, and this has taken over two minutes on a slow host). They then confirm "Unknown External Server" and the first-join **"Trust this server?"** prompt; the result reports `trust_confirmed`. A failed `server_to_join` leaves the client running; screenshot it instead of relaunching.
+2. Lunar then asks **"Download Resource Packs?"**. Click "Download Everything & Join" at (425, 265) and wait for the world.
+3. Manual fallback: from the main menu after sign-in, `open_uri` `minecraft://connect?serverUrl=<host>&serverPort=<port>`, click Continue at (425, 265), then **Trust and Join at (427, 282)**. "Don't Trust" is the green, default-focused button below it, so never press Return on that prompt. After a failed join, use "Back to menu" before sending the URI again; a connect URI sent from the Play screen is ignored.
+4. Do not hunt for a saved entry in the Servers tab. A shared profile lists featured servers first and can hold hundreds of saved entries below them.
+
+**Read the failure:**
+
+| Symptom | Meaning | Fix |
+| --- | --- | --- |
+| "Terracotta" (InitialConnection) within seconds of Continue | `/v1/join` unreachable | Port not forwarded in TCP, wrong port, or Lunar not running |
+| "Connection timed out" ("Kelp") after about 60 s, with nothing about the player in the Lunar log | WebRTC could not connect | Start Lunar with `-public-host`; check the UDP forward for the same port |
+| "Connection timed out" with `failed to connect to upstream server` in the Lunar log | Lunar reached, upstream not | Fix the `-upstream` target (see below) |
+| Stuck on the menu after `open_uri` | Sign-in not finished, or the URI was sent from the Play screen | Wait for sign-in; go back to the main menu |
+
+**Upstream reachability.** Check the `-upstream` target from the Lunar machine before blaming the join: `curl -s -m5 http://<host>:<port>/v1/join` for NetherNet servers, or a RakNet ping. A host name that resolves to the Lunar machine's own public address only works if the router supports hairpin NAT. The user's private instructions say whether it does and where the fixtures run. A public server that answers is enough for a join check.
 
 Before validating a settings-driven module, inspect its defaults instead of assuming the main toggle enables its subfeatures. In particular, `settings.DefaultSettings().Xray` normally has `HideTerrain: true` but `Ores: false`; `.xray on` alone does not turn ore highlighting on. Enable Ores through the Xray form or an explicitly test-only configuration, and verify the resulting view. If a temporary source default is necessary for an interactive test endpoint, build and start the process, immediately restore the source file, keep the change out of Git, and tell the user the running binary has test-only defaults.
 
-The user authorized saving and reusing the shared development-cache passphrase. It is stored in the system Secret Service under attributes `application=lunar-dev` and `purpose=auth-cache`. Retrieve it with `secret-tool lookup application lunar-dev purpose auth-cache` using captured subprocess output, and pass it to the Lunar subprocess as `LUNAR_DEV_PASSPHRASE` with `-auth-store shared`. Never display the lookup output, put the password in this skill, or include it in logs or command-line arguments. Prefer this saved credential before asking the user to unlock the cache again.
+**Shared auth cache.** Start Lunar with `-auth-store shared` and **no** `LUNAR_DEV_PASSPHRASE` first: the cached unlock token (`unlock.json` beside the cache, valid for days) unlocks it silently. An explicit `LUNAR_DEV_PASSPHRASE` overrides the token, and a stale one aborts startup with "does not decrypt", so set it only when the token has expired. The user's private instructions name the current passphrase source. Pass it only through the subprocess environment; never display it, put it in this skill, or include it in logs or command-line arguments. Never run with `-auth-unlock-ttl 0` or `-lock`: both delete the token, and every other task then needs the passphrase.
 
 ### BDS version checks and updates
 

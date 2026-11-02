@@ -109,9 +109,14 @@ buttons rather than sleeping for a fixed startup period.
 For a **new server on a new client**, pass `server_to_join: { name: "Example", address:
 "example.org:19132" }` to `launch` at 854×480. The launcher delivers the add-server URI
 while Minecraft starts; the MCP checks the exact saved entry and a ready screen, then
-opens and confirms the external-server prompt. `launch` returns after Continue is
-dismissed, while the world may still be loading. Verify the joined world or server
-response. When the host and port are already saved, the same launch option sends the
+opens and confirms the external-server prompt. Minecraft holds URIs until Microsoft
+sign-in finishes, which can take minutes after the menu appears, so these waits allow
+three minutes. A NetherNet server joined by address for the first time then asks
+"Trust this server?" with "Don't Trust" focused; the MCP clicks "Trust and Join" and
+reports `trust_confirmed`. `launch` returns after those prompts, while the world may
+still be loading or the server may show its own prompt, such as a resource-pack
+download. Verify the joined world or server response. If the join fails, the client
+keeps running so the caller can inspect it. When the host and port are already saved, the same launch option sends the
 connect URI during startup and keeps the existing saved name. For an already running
 client, call `add_server` with `name`, `address`, and `join: true`; it avoids duplicate
 saved entries. The regular `startup_uri` launch option passes a Minecraft URI without

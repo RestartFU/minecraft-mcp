@@ -78,3 +78,23 @@ export function addServerFormReady(pngBase64: string): boolean {
     playG > 90 && playG > playR * 1.6 && playG > playB * 3 &&
     fieldR < 90 && fieldG < 90 && fieldB < 90;
 }
+
+// NetherNet servers joined by address ask the player to trust their key on the
+// first join: "Trust this server?" with a gray "Trust and Join" button above a
+// green "Don't Trust" button that holds the default focus.
+export function trustPromptReady(pngBase64: string): boolean {
+  const png = PNG.sync.read(Buffer.from(pngBase64, "base64"));
+  if (png.width !== 854 || png.height !== 480) return false;
+  const rgb = (x: number, y: number) => {
+    const i = (y * png.width + x) * 4;
+    return [png.data[i], png.data[i + 1], png.data[i + 2]];
+  };
+  const white = ([r, g, b]: number[]) => r > 235 && g > 235 && b > 235;
+  const neutral = ([r, g, b]: number[]) => r > 145 && Math.abs(r - g) < 12 && Math.abs(g - b) < 12;
+  const green = ([r, g, b]: number[]) => g > 90 && g > r * 1.6 && g > b * 3;
+  const [fieldR, fieldG, fieldB] = rgb(425, 225);
+  return white(rgb(322, 166)) && white(rgb(322, 200)) &&
+    fieldR < 30 && fieldG < 30 && fieldB < 30 &&
+    neutral(rgb(360, 282)) && neutral(rgb(500, 282)) &&
+    green(rgb(360, 314)) && green(rgb(500, 314));
+}

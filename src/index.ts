@@ -49,7 +49,7 @@ server.tool(
     version: z.string().optional().describe("Installed game version; defaults to the newest"),
     data_dir: z.string().optional().describe("Separate data dir (own Xbox login, worlds, settings) for running several bots"),
     startup_uri: z.string().startsWith("minecraft://").max(2048).optional().describe("Minecraft URI dispatched during startup; verify its effect after launch"),
-    server_to_join: z.object({ name: z.string(), address: z.string() }).optional().describe("Save a new server or connect to an existing one during startup, then confirm the prompt (854×480)"),
+    server_to_join: z.object({ name: z.string(), address: z.string() }).optional().describe("Save a new server or connect to an existing one during startup, then confirm the external-server and first-join trust prompts (854×480). Waits for sign-in; a failed join leaves the client running"),
     width: z.number().int().min(320).default(854),
     height: z.number().int().min(180).default(480),
     fps_cap: z.number().int().min(0).default(20).describe("Render cap; 20 FPS limits CPU for routine work"),
@@ -76,13 +76,18 @@ server.tool(
     instances.set(id, inst);
     current = id;
     let serverJoin: Awaited<ReturnType<typeof addServer>> | undefined;
-    try {
-      if (server_to_join) {
+    if (server_to_join) {
+      // The client started; a failed join keeps it running so the caller can
+      // inspect the screen and continue instead of paying for another startup.
+      try {
         if (savedBeforeLaunch === undefined) await waitForStartupServer(inst, server_to_join.name, server_to_join.address);
         serverJoin = await addServer(inst, server_to_join.name, server_to_join.address, true, savedBeforeLaunch !== undefined);
-      } else if (wait_for_menu) {
-        await inst.waitForMenu();
+      } catch (error) {
+        throw new Error(`${(error as Error).message} (client ${id} is still running; take a screenshot before acting)`);
       }
+    }
+    try {
+      if (!server_to_join && wait_for_menu) await inst.waitForMenu();
       const state = await inst.socket.call("state");
       return text({ instance: id, version: inst.version, pid: inst.gamePid, cpu_quota_percent, memory_limit_mib, ...state,
         ...(serverJoin ? { server_join: serverJoin } : {}) });
@@ -185,7 +190,7 @@ server.tool(
   "add_server",
   "Add an external server using Minecraft's URI or form fallback and verify it was saved (854×480 clients)",
   { ...instanceArg, name: z.string(), address: z.string().describe("host or host:port (default port 19132)"),
-    join: z.boolean().default(false).describe("After saving, connect and confirm the external-server prompt; does not wait for the world") },
+    join: z.boolean().default(false).describe("After saving, connect and confirm the external-server and first-join trust prompts; does not wait for the world or resource-pack prompt") },
   async ({ instance, name, address, join }) => text(await addServer(await pick(instance), name, address, join)),
 );
 

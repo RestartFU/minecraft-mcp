@@ -2,7 +2,12 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Instance } from "./instance.ts";
 import { nativeInput } from "./native_input.ts";
-import { addServerFormReady, externalServerPromptPresent, externalServerPromptReady, mainMenuReady, serversTabReady } from "./menu_ready.ts";
+import { addServerFormReady, externalServerPromptPresent, externalServerPromptReady, mainMenuReady, serversTabReady, trustPromptReady } from "./menu_ready.ts";
+
+// Minecraft renders its menu before Microsoft sign-in finishes and holds URIs until
+// it does. Sign-in has taken over two minutes on a slow host, so joins wait this long
+// for the prompts a queued URI opens.
+const SIGN_IN_BUDGET_MS = 180_000;
 
 // The Add Server form saved exact fields and joined in two 20 ms trials at 20 FPS.
 // Other text widgets retain the more conservative native-input default.
@@ -83,9 +88,9 @@ export async function addServer(inst: Instance, name: string, address: string, j
   const existing = await savedName(inst.dataDir, host, port);
   if (existing !== undefined) {
     mark("entry_verified");
-    if (join) await connectToServer(inst, host, port, mark, !connectRequestedAtStartup);
+    const trust = join ? await connectToServer(inst, host, port, mark, !connectRequestedAtStartup) : undefined;
     mark("total_ms");
-    return { saved: true, already_exists: true, joining: join, prompt_confirmed: join, name: existing, host, port, timings_ms };
+    return { saved: true, already_exists: true, joining: join, prompt_confirmed: join, ...trust, name: existing, host, port, timings_ms };
   }
 
   const addUri = externalServerUri(name, address);
@@ -99,9 +104,9 @@ export async function addServer(inst: Instance, name: string, address: string, j
   if (fromUri !== undefined) {
     if (fromUri !== name) throw new Error(`Minecraft saved server name ${JSON.stringify(fromUri)} instead of ${JSON.stringify(name)}`);
     mark("entry_verified");
-    if (join) await connectToServer(inst, host, port, mark);
+    const trust = join ? await connectToServer(inst, host, port, mark) : undefined;
     mark("total_ms");
-    return { saved: true, already_exists: false, method: "deep_link", joining: join, prompt_confirmed: join, name, host, port, timings_ms };
+    return { saved: true, already_exists: false, method: "deep_link", joining: join, prompt_confirmed: join, ...trust, name, host, port, timings_ms };
   }
 
   // Some builds open the Servers tab without saving the deep link. Complete the
@@ -126,9 +131,9 @@ export async function addServer(inst: Instance, name: string, address: string, j
     if (stored !== undefined) {
       if (stored !== name) throw new Error(`Minecraft saved server name ${JSON.stringify(stored)} instead of ${JSON.stringify(name)}`);
       mark("entry_verified");
-      if (join) await connectToServer(inst, host, port, mark);
+      const trust = join ? await connectToServer(inst, host, port, mark) : undefined;
       mark("total_ms");
-      return { saved: true, already_exists: false, method: "form", joining: join, prompt_confirmed: join, name, host, port, timings_ms };
+      return { saved: true, already_exists: false, method: "form", joining: join, prompt_confirmed: join, ...trust, name, host, port, timings_ms };
     }
     await new Promise((r) => setTimeout(r, 250));
   }
@@ -145,7 +150,7 @@ export async function waitForStartupServer(inst: Instance, name: string, address
   }
   externalServerUri(name, address);
   const { host, port } = serverTarget(address);
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + SIGN_IN_BUDGET_MS;
   let seenReady = false;
   let readyWithoutSaveSince = 0;
   while (Date.now() < deadline) {
@@ -161,7 +166,8 @@ export async function waitForStartupServer(inst: Instance, name: string, address
       seenReady = true;
       if (stored === undefined) {
         if (!readyWithoutSaveSince) readyWithoutSaveSince = Date.now();
-        if (Date.now() - readyWithoutSaveSince > 1_500) return;
+        // The menu shows during sign-in, before the queued add URI runs.
+        if (Date.now() - readyWithoutSaveSince > 60_000) return;
       }
     } else {
       seenReady = false;
@@ -181,7 +187,7 @@ async function connectToServer(inst: Instance, host: string, port: number, mark:
     await inst.socket.call("uri", { uri });
     mark("connect_uri_sent");
   }
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + SIGN_IN_BUDGET_MS;
   let readySince = 0;
   while (Date.now() < deadline) {
     const shot = await inst.socket.call("screenshot", { width: 854 });
@@ -201,7 +207,7 @@ async function connectToServer(inst: Instance, host: string, port: number, mark:
         }
       }
       mark("prompt_dismissed");
-      return;
+      return { trust_confirmed: await confirmTrustPrompt(inst, mark) };
     }
     // A startup intent can be silently ignored by some builds. Once the main
     // menu has stayed interactive for five seconds without its prompt, retry
@@ -209,7 +215,7 @@ async function connectToServer(inst: Instance, host: string, port: number, mark:
     if (!dispatchUri) {
       if (mainMenuReady(image)) {
         if (!readySince) readySince = Date.now();
-        if (Date.now() - readySince > 5_000) {
+        if (Date.now() - readySince > 60_000) {
           await inst.socket.call("uri", { uri });
           mark("connect_uri_retried");
           dispatchUri = true;
@@ -221,4 +227,28 @@ async function connectToServer(inst: Instance, host: string, port: number, mark:
     await new Promise((r) => setTimeout(r, 150));
   }
   throw new Error("Minecraft did not show the external-server confirmation; inspect the current screen");
+}
+
+// A NetherNet server joined by address asks the player to trust its key on the
+// first join, a few seconds after the external-server prompt. "Don't Trust" holds
+// the default focus, so the join stalls until "Trust and Join" is clicked. Servers
+// already trusted, and RakNet servers, skip the prompt.
+async function confirmTrustPrompt(inst: Instance, mark: (stage: string) => void): Promise<boolean> {
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const shot = await inst.socket.call("screenshot", { width: 854 });
+    if (trustPromptReady(shot.png_base64 as string)) {
+      mark("trust_prompt_ready");
+      await serverInput(inst, "", [427, 282]);
+      await new Promise((r) => setTimeout(r, 350));
+      const followup = await inst.socket.call("screenshot", { width: 854 });
+      if (trustPromptReady(followup.png_base64 as string)) {
+        throw new Error("Minecraft did not dismiss the server trust prompt; click Trust and Join at (427, 282)");
+      }
+      mark("trust_confirmed");
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return false;
 }
