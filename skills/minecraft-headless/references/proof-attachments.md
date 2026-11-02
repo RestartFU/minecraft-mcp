@@ -15,6 +15,25 @@ Without a body flag, `gh pr edit --attach` preserves the existing description an
 
 Use a browser upload only when the CLI is unavailable or a concrete CLI error requires a different route. Do not request browser login merely because attachment support has not been checked. A GitHub blob/raw URL backed by a committed file is not an attachment.
 
+## Before and after
+
+A Before/After pair proves a change only when the two images differ in the way the change claims. Two images that look the same prove nothing, even when they are labeled Before and After.
+
+1. **Name the difference first.** Before capturing anything, write one line that says what will look different, for example "the disconnect title changes from 'An error has occurred.' to 'Server not found.'". If you can't name a visible difference, there's nothing to capture.
+2. **Check that the screen comes from the code you changed.** Confirm from the proxy log that the code path ran. Then confirm that the element on screen is drawn from that code, not from a client fallback. A codeword or title the client chose itself (for example "Multiplayer Connection Failed", NetherNet or Door) means your packet never arrived. Stop and diagnose that path instead of capturing it.
+3. **Compare before attaching.** Look at the two frames side by side. If the named difference isn't visible, don't attach a pair. In the PR's Proof section, say the change isn't visible on that route and why. Attach at most one frame, captioned with what it actually shows, for example "Same on main and this branch: the client's own NetherNet screen".
+4. **Attach one labeled composite, not two loose images.** Capture both frames with the same client version, window size, server, and game state. Stack them into one image with the labels burned in, so the order can't be misread:
+
+   ```bash
+   magick before.png -gravity north -background '#202020' -fill white -pointsize 44 \
+     -splice 0x70 -annotate +0+12 'BEFORE  main @ 7f39e8b' before-labeled.png
+   magick after.png -gravity north -background '#202020' -fill white -pointsize 44 \
+     -splice 0x70 -annotate +0+12 'AFTER  PR #123 @ bbf5503' after-labeled.png
+   magick before-labeled.png after-labeled.png -append before-after.png
+   ```
+
+   Crop both frames to the same region first when the change is small (`-crop WxH+X+Y +repage`), so the difference is easy to see. The caption names the difference in words: "Before/After: the title changes from 'An error has occurred.' to 'Server not found.'".
+
 Persist the first valid in-game proof before stopping or changing the client. Pass
 an absolute `save_path` outside the repository to the MCP `screenshot` tool so the
 same captured PNG is both saved and returned inline:
