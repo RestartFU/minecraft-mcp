@@ -91,6 +91,13 @@ for measurements and limits.
 frame rate, such as 1920×1080 with `fps_cap: 60`. `record_stop` finishes the file. Each
 encode uses the first encoder that actually works on the host: Fedora lists `h264_vaapi` and
 `libopenh264` without enabling them, so a recording may fall back to AV1 or VP9.
+On Linux, `record_start` accepts `persistent: true` to keep the capture running when
+the MCP connection closes. A new connection can adopt the same client by instance id,
+then inspect or finish the same capture with `record_status` or `record_stop`.
+Persistent captures use private state under `$XDG_CACHE_HOME/minecraft-mcp/recordings`
+(default `~/.cache/minecraft-mcp/recordings`) and verify process identity before signalling
+the recorder. Explicitly stopping the client finishes its recording first; the normal
+client idle lease still applies. The default remains connection-bound recording.
 `video_frame` returns one frame of a file to check what was captured. `video_timelapse`
 speeds a recording up into a cut under a size limit, as H.264 MP4 when it can and otherwise
 VP9 WebM, which browsers and Discord play inline. `upload_file` sends a file to a

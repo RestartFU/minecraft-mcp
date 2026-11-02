@@ -102,6 +102,7 @@ server.tool(
 
 server.tool("stop", "Quit a running client (in-game quit, force-killed after 35s)", instanceArg, async ({ instance }) => {
   const inst = await pick(instance);
+  if ((await recordingStatus(inst.id)).recording) await stopRecording(inst.id);
   await inst.stop();
   instances.delete(inst.id);
   if (current === inst.id) current = [...instances.keys()].pop();
@@ -224,10 +225,11 @@ server.tool(
     ...instanceArg,
     save_path: z.string().min(1).describe("Absolute .mkv path on the MCP host"),
     fps: z.number().int().min(1).max(120).default(60),
+    persistent: z.boolean().default(false).describe("Linux only: keep recording after this MCP connection closes; adopt the same instance and use record_status or record_stop to recover it"),
   },
-  async ({ instance, save_path, fps }) => {
+  async ({ instance, save_path, fps, persistent }) => {
     const inst = await pick(instance);
-    return text(await startRecording(inst.id, save_path, fps));
+    return text(await startRecording(inst.id, save_path, fps, persistent));
   },
 );
 

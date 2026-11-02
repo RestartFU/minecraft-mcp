@@ -2,6 +2,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { dirname, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Subprocess } from "bun";
+import { persistentRecordingStatus, startPersistentRecording, stopPersistentRecording } from "./persistent_recording.ts";
 
 const locateScript = fileURLToPath(new URL("../skills/minecraft-headless/scripts/native_input.py", import.meta.url));
 const renderNode = process.env.MINECRAFT_VAAPI_DEVICE ?? "/dev/dri/renderD128";
@@ -95,17 +96,21 @@ const absolute = (path: string, name: string) => {
 };
 
 /** Starts recording the instance's game window to a Matroska file. */
-export async function startRecording(instance: string, path: string, fps: number) {
+export async function startRecording(instance: string, path: string, fps: number, persistent = false) {
   if (recordings.has(instance)) throw new Error(`instance ${instance} is already recording`);
+  if ((await persistentRecordingStatus(instance)).recording) throw new Error(`instance ${instance} is already recording`);
   absolute(path, "save_path");
   const win = await locate(instance);
   const enc = await encodeArgs(recordEncoders, { quality: "record" });
   await mkdir(dirname(path), { recursive: true });
-  const proc = Bun.spawn([
+  const args = [
     "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", ...enc.input,
     "-f", "x11grab", "-framerate", `${fps}`, "-draw_mouse", "0", "-window_id", `${win.window}`, "-i", win.display,
     "-vf", enc.filter, ...enc.output, "-g", `${fps * 2}`, path,
-  ], { stdin: "pipe", stdout: "ignore", stderr: "pipe", env: { ...process.env, DISPLAY: win.display, XAUTHORITY: win.xauthority } });
+  ];
+  const env = { ...process.env, DISPLAY: win.display, XAUTHORITY: win.xauthority };
+  if (persistent) return { ...await startPersistentRecording(instance, path, enc.name, args, env), fps, display: win.display, window: win.window };
+  const proc = Bun.spawn(args, { stdin: "pipe", stdout: "ignore", stderr: "pipe", env });
   const recording: Recording = { proc, path, started: Date.now(), encoder: enc.name, stderr: new Response(proc.stderr).text() };
   // A capture that cannot start exits at once; report it instead of a silent empty file.
   const early = await Promise.race([proc.exited, Bun.sleep(2000).then(() => undefined)]);
@@ -117,7 +122,7 @@ export async function startRecording(instance: string, path: string, fps: number
 /** Stops the instance's recording and reports the finished file. */
 export async function stopRecording(instance: string) {
   const recording = recordings.get(instance);
-  if (!recording) throw new Error(`instance ${instance} is not recording`);
+  if (!recording) return stopPersistentRecording(instance);
   recordings.delete(instance);
   recording.proc.stdin.write("q");
   await recording.proc.stdin.end();
@@ -130,7 +135,7 @@ export async function stopRecording(instance: string) {
   return { path: recording.path, bytes: size, seconds: Math.round((Date.now() - recording.started) / 1000), encoder: recording.encoder, ffmpeg_errors: (await recording.stderr).trim().slice(-2000) };
 }
 
-/** Stops every recording this MCP process started, for shutdown. */
+/** Stops connection-bound recordings; explicitly persistent captures survive release. */
 export async function stopAllRecordings() {
   await Promise.allSettled([...recordings.keys()].map(stopRecording));
 }
@@ -138,7 +143,7 @@ export async function stopAllRecordings() {
 /** Reports the instance's running recording, if any. */
 export async function recordingStatus(instance: string) {
   const recording = recordings.get(instance);
-  if (!recording) return { recording: false };
+  if (!recording) return persistentRecordingStatus(instance);
   const size = (await stat(recording.path).catch(() => undefined))?.size ?? 0;
   return { recording: true, path: recording.path, bytes: size, seconds: Math.round((Date.now() - recording.started) / 1000), encoder: recording.encoder };
 }
