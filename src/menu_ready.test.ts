@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { externalServerPromptReady, mainMenuReady, trustPromptReady } from "./menu_ready.ts";
+import { pollScreenshot } from "./add_server.ts";
 
 // Frames captured from the 1.26.60.4 client at 854×480.
 const frame = (name: string) => readFileSync(join(import.meta.dir, "testdata", name)).toString("base64");
@@ -23,6 +24,14 @@ test("external-server prompt is not mistaken for the trust prompt", () => {
   expect(externalServerPromptReady(frames.external)).toBe(true);
   expect(externalServerPromptReady(frames.trust)).toBe(false);
   expect(externalServerPromptReady(frames.packs)).toBe(false);
+});
+
+test("polling treats a missing first frame as not ready and rethrows other errors", async () => {
+  const failing = (message: string) => ({ socket: { call: async () => { throw new Error(message); } } }) as any;
+  expect(await pollScreenshot(failing("no frame rendered within 3s"))).toBeUndefined();
+  expect(pollScreenshot(failing("socket closed"))).rejects.toThrow("socket closed");
+  const ok = { socket: { call: async () => ({ png_base64: frames.menu }) } } as any;
+  expect(await pollScreenshot(ok)).toBe(frames.menu);
 });
 
 test("main menu reads as ready while sign-in is still running", () => {

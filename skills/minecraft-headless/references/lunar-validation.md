@@ -22,9 +22,10 @@ Read this before the first join; it replaces trial and error. Host-specific valu
 **Client steps (1.26.60.4, 854×480):**
 
 1. Prefer `launch` with `server_to_join: { name, address }`, or `add_server` with `join: true` on a running client. Both wait for Microsoft sign-in (the menu renders first; "Signing in with your Microsoft account…" at the bottom left means queued URIs have not run yet, and this has taken over two minutes on a slow host). They then confirm "Unknown External Server" and the first-join **"Trust this server?"** prompt; the result reports `trust_confirmed`. A failed `server_to_join` leaves the client running; screenshot it instead of relaunching.
-2. Lunar then asks **"Download Resource Packs?"**. Click "Download Everything & Join" at (425, 265) and wait for the world.
-3. Manual fallback: from the main menu after sign-in, `open_uri` `minecraft://connect?serverUrl=<host>&serverPort=<port>`, click Continue at (425, 265), then **Trust and Join at (427, 282)**. "Don't Trust" is the green, default-focused button below it, so never press Return on that prompt. After a failed join, use "Back to menu" before sending the URI again; a connect URI sent from the Play screen is ignored.
-4. Do not hunt for a saved entry in the Servers tab. A shared profile lists featured servers first and can hold hundreds of saved entries below them.
+2. If the profile does not have Lunar's current pack cached, Lunar then asks **"Download Resource Packs?"**. Click "Download Everything & Join" at (425, 265). Otherwise the client goes straight into the world. Take one screenshot about 10 s after the join returns and act on what it shows.
+3. If `server_to_join` fails, it says why and leaves the client running. Screenshot it, then finish with `add_server` and `join: true` on the same instance; do not relaunch.
+4. Manual fallback: from the main menu after sign-in, `open_uri` `minecraft://connect?serverUrl=<host>&serverPort=<port>`, click Continue at (425, 265), then **Trust and Join at (427, 282)**. "Don't Trust" is the green, default-focused button below it, so never press Return on that prompt. After a failed join, use "Back to menu" before sending the URI again; a connect URI sent from the Play screen is ignored.
+5. Do not hunt for a saved entry in the Servers tab. A shared profile lists featured servers first and can hold hundreds of saved entries below them.
 
 **Read the failure:**
 

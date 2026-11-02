@@ -179,8 +179,14 @@ export class Instance {
     const deadline = Date.now() + timeoutMs;
     let seen = false;
     while (Date.now() < deadline) {
-      const shot = await this.socket.call("screenshot", { width: 426 });
-      if (mainMenuReady(shot.png_base64 as string)) {
+      let image: string | undefined;
+      try {
+        image = (await this.socket.call("screenshot", { width: 426 })).png_base64 as string;
+      } catch (error) {
+        // No first frame yet on a slow start; keep polling.
+        if (!/no frame rendered/i.test((error as Error).message)) throw error;
+      }
+      if (image !== undefined && mainMenuReady(image)) {
         if (seen) {
           // Switch the first input from keyboard to mouse mode before returning.
           await this.socket.call("mouse_pos", { x: this.width * 0.7, y: this.height * 0.83 });

@@ -14,12 +14,24 @@ const SIGN_IN_BUDGET_MS = 180_000;
 const serverInput = (inst: Instance, value: string, click: [number, number], clearChars = 0) =>
   nativeInput(inst.id, value, [], click, clearChars, 20);
 
+// A client that has not drawn its first frame yet answers screenshot with
+// "no frame rendered"; while polling for a screen, that only means not ready yet.
+export async function pollScreenshot(inst: Pick<Instance, "socket">): Promise<string | undefined> {
+  try {
+    const shot = await inst.socket.call("screenshot", { width: 854 });
+    return shot.png_base64 as string;
+  } catch (error) {
+    if (/no frame rendered/i.test((error as Error).message)) return undefined;
+    throw error;
+  }
+}
+
 async function waitForScreen(inst: Instance, ready: (pngBase64: string) => boolean, label: string) {
   const deadline = Date.now() + 15_000;
   let seen = false;
   while (Date.now() < deadline) {
-    const shot = await inst.socket.call("screenshot", { width: 854 });
-    if (ready(shot.png_base64 as string)) {
+    const image = await pollScreenshot(inst);
+    if (image !== undefined && ready(image)) {
       if (seen) return;
       seen = true;
     } else {
@@ -158,9 +170,8 @@ export async function waitForStartupServer(inst: Instance, name: string, address
     if (stored !== undefined && stored !== name) {
       throw new Error(`Minecraft saved server name ${JSON.stringify(stored)} instead of ${JSON.stringify(name)}`);
     }
-    const shot = await inst.socket.call("screenshot", { width: 854 });
-    const image = shot.png_base64 as string;
-    const ready = serversTabReady(image) || mainMenuReady(image);
+    const image = await pollScreenshot(inst);
+    const ready = image !== undefined && (serversTabReady(image) || mainMenuReady(image));
     if (ready) {
       if (seenReady && stored === name) return;
       seenReady = true;
@@ -190,8 +201,11 @@ async function connectToServer(inst: Instance, host: string, port: number, mark:
   const deadline = Date.now() + SIGN_IN_BUDGET_MS;
   let readySince = 0;
   while (Date.now() < deadline) {
-    const shot = await inst.socket.call("screenshot", { width: 854 });
-    const image = shot.png_base64 as string;
+    const image = await pollScreenshot(inst);
+    if (image === undefined) {
+      await new Promise((r) => setTimeout(r, 150));
+      continue;
+    }
     if (externalServerPromptReady(image)) {
       mark("prompt_ready");
       await serverInput(inst, "", [425, 265]);
