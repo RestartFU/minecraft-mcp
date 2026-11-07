@@ -34,7 +34,13 @@ wrapper unit is limited too. Routine sessions render at 20 FPS.
 `preflight` uses the requested quota and memory limit to require enough host capacity;
 `launch` repeats that check. The game scope appears a few seconds after process start,
 so the game cap takes effect when the scope is discovered, before `launch` returns.
-Keep 20 FPS throughout routine sessions. For passive waiting,
+Keep 20 FPS throughout routine sessions. Joins are the exception: the client loads a joined
+world's resources a slice per frame, so `launch` with `server_to_join` and `add_server` with
+`join: true` run at `MINECRAFT_JOIN_BOOST_FPS` (default 60, `0` disables it) until the game
+locks the cursor in the world, or two minutes pass, then return to the requested cap. An
+explicit `set_fps` during that window wins. On a software-rendered 854×480 client this cut a
+cold join to a world from 22–27 s to about 19 s. A connection that closes mid-join restores
+the cap at once, so the next connection can adopt the client. For passive waiting,
 `set_render_mode({on_demand:true})` skips common OpenGL draws between screenshots;
 each screenshot turns drawing on for a complete following frame. Restore continuous
 drawing before active gameplay. Use 5 FPS only when a task explicitly prioritizes
