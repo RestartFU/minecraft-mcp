@@ -7,6 +7,7 @@ import { DEFAULT_CPU_QUOTA_PERCENT, DEFAULT_MEMORY_LIMIT_MIB, preflight } from "
 import { nativeInput } from "./native_input.ts";
 import { addServer, externalServerUri, savedServerName, serverConnectUri, waitForStartupServer } from "./add_server.ts";
 import { screenshot } from "./screenshot.ts";
+import { boostRunningClient, boostedCap, cancelRestore, flushRestores, restoreNow, restoreWhenInWorld } from "./join_boost.ts";
 import { recordingStatus, startRecording, stopAllRecordings, stopRecording, uploadFile, videoFrame, videoTimelapse } from "./recorder.ts";
 
 const instances = new Map<string, Instance>();
@@ -52,7 +53,7 @@ server.tool(
     server_to_join: z.object({ name: z.string(), address: z.string() }).optional().describe("Save a new server or connect to an existing one during startup, then confirm the external-server and first-join trust prompts (854×480). Waits for sign-in; a failed join leaves the client running"),
     width: z.number().int().min(320).default(854),
     height: z.number().int().min(180).default(480),
-    fps_cap: z.number().int().min(0).default(20).describe("Render cap; 20 FPS limits CPU for routine work"),
+    fps_cap: z.number().int().min(0).default(20).describe("Render cap; 20 FPS limits CPU for routine work. A server_to_join join runs at MINECRAFT_JOIN_BOOST_FPS (default 60) until the player is in the world, then returns to this cap"),
     hidden: z.boolean().default(true).describe("Keep the window hidden (still renders for screenshots)"),
     cpu_quota_percent: z.number().int().min(50).max(400).default(DEFAULT_CPU_QUOTA_PERCENT).describe("Per-client CPU quota on Linux; 100 = one CPU core"),
     memory_limit_mib: z.number().int().min(1024).max(8192).default(DEFAULT_MEMORY_LIMIT_MIB).describe("Per-client memory limit on Linux, in MiB"),
@@ -71,7 +72,9 @@ server.tool(
       : startup_uri;
     const check = await preflight(memory_limit_mib, cpu_quota_percent);
     if (!check.ok) throw new Error(`not enough capacity to launch: ${check.issues.join("; ")}`);
-    const inst = await Instance.launch(id, { version, dataDir: data_dir, startupUri: initialUri, width, height, fpsCap: fps_cap, hidden,
+    // A join loads faster at a higher cap; restoreWhenInWorld returns to fps_cap once in the world.
+    const inst = await Instance.launch(id, { version, dataDir: data_dir, startupUri: initialUri, width, height,
+      fpsCap: server_to_join ? boostedCap(fps_cap) : fps_cap, hidden,
       cpuQuotaPercent: cpu_quota_percent, memoryLimitMiB: memory_limit_mib });
     instances.set(id, inst);
     current = id;
@@ -82,7 +85,9 @@ server.tool(
       try {
         if (savedBeforeLaunch === undefined) await waitForStartupServer(inst, server_to_join.name, server_to_join.address);
         serverJoin = await addServer(inst, server_to_join.name, server_to_join.address, true, savedBeforeLaunch !== undefined);
+        restoreWhenInWorld(inst, fps_cap);
       } catch (error) {
+        await restoreNow(inst, fps_cap);
         throw new Error(`${(error as Error).message} (client ${id} is still running; take a screenshot before acting)`);
       }
     }
@@ -190,8 +195,20 @@ server.tool(
   "add_server",
   "Add an external server using Minecraft's URI or form fallback and verify it was saved (854×480 clients)",
   { ...instanceArg, name: z.string(), address: z.string().describe("host or host:port (default port 19132)"),
-    join: z.boolean().default(false).describe("After saving, connect and confirm the external-server and first-join trust prompts; does not wait for the world or resource-pack prompt") },
-  async ({ instance, name, address, join }) => text(await addServer(await pick(instance), name, address, join)),
+    join: z.boolean().default(false).describe("After saving, connect and confirm the external-server and first-join trust prompts; does not wait for the world or resource-pack prompt. The join runs at MINECRAFT_JOIN_BOOST_FPS (default 60) until the player is in the world, then the previous cap returns") },
+  async ({ instance, name, address, join }) => {
+    const inst = await pick(instance);
+    if (!join) return text(await addServer(inst, name, address, false));
+    const cap = await boostRunningClient(inst);
+    try {
+      const result = await addServer(inst, name, address, true);
+      restoreWhenInWorld(inst, cap);
+      return text(result);
+    } catch (error) {
+      await restoreNow(inst, cap);
+      throw error;
+    }
+  },
 );
 
 server.tool(
@@ -201,7 +218,11 @@ server.tool(
   async ({ instance, uri }) => text(await (await pick(instance)).socket.call("uri", { uri })),
 );
 
-server.tool("set_fps", "Change the render cap at runtime (0 = uncapped while focused)", { ...instanceArg, cap: z.number().int().min(0) }, async ({ instance, cap }) => text(await (await pick(instance)).socket.call("fps", { cap })));
+server.tool("set_fps", "Change the render cap at runtime (0 = uncapped while focused)", { ...instanceArg, cap: z.number().int().min(0) }, async ({ instance, cap }) => {
+  const inst = await pick(instance);
+  cancelRestore(inst);
+  return text(await inst.socket.call("fps", { cap }));
+});
 
 server.tool(
   "set_render_mode",
@@ -293,6 +314,7 @@ process.on("SIGTERM", stopAll);
 // A closed connection leaves its clients running for the next one to adopt:
 // restarting the caller must not lose a client mid-task.
 async function release() {
+  await flushRestores();
   await stopAllRecordings();
   for (const inst of instances.values()) if (inst.alive) inst.release();
   process.exit(0);
